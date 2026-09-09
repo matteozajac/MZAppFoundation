@@ -1,0 +1,39 @@
+name: Validate
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  core-and-setup:
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v4
+      - name: Select Xcode 26.6
+        run: sudo xcode-select -s /Applications/Xcode_26.6.app
+      - name: Core tests without vendor dependencies
+        run: swift test --package-path Packages/Core
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.3'
+      - name: Setup dependencies
+        run: |
+          brew install xcodegen
+          pip install -r scripts/requirements.txt
+          bundle install --gemfile scripts/Gemfile
+      - name: Setup fixture tests
+        run: BUNDLE_GEMFILE=scripts/Gemfile bundle exec python3 scripts/test_setup.py
+      - name: Generate sample projects
+        working-directory: Samples
+        run: xcodegen generate
+      - name: Build local and device samples
+        run: |
+          xcodebuild -project Samples/MZFoundationSamples.xcodeproj -scheme FoundationLocal -destination 'generic/platform=iOS Simulator' -derivedDataPath DerivedData/Local CODE_SIGNING_ALLOWED=NO build
+          python3 scripts/audit_binary.py DerivedData/Local/Build/Products/Debug-iphonesimulator/FoundationLocal.app --local
+          xcodebuild -project Samples/MZFoundationSamples.xcodeproj -scheme FoundationVisionLocal -destination 'generic/platform=visionOS Simulator' -derivedDataPath DerivedData/VisionLocal CODE_SIGNING_ALLOWED=NO build
+          python3 scripts/audit_binary.py DerivedData/VisionLocal/Build/Products/Debug-xrsimulator/FoundationVisionLocal.app --local
+          xcodebuild -project Samples/MZFoundationSamples.xcodeproj -scheme FoundationDevice -configuration Internal -destination 'generic/platform=iOS' CODE_SIGNING_ALLOWED=NO build
+          xcodebuild -project Samples/MZFoundationSamples.xcodeproj -scheme FoundationVisionDevice -configuration Internal -destination 'generic/platform=visionOS' CODE_SIGNING_ALLOWED=NO build

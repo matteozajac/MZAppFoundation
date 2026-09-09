@@ -1,0 +1,4 @@
+interface:
+  display_name: "MZ App Foundation Setup"
+  short_description: "Configure shared Apple app services and developer tools"
+  default_prompt: "Use $mz-app-foundation-setup to configure this app with MZAppFoundation."

@@ -1,0 +1,140 @@
+name: MZFoundationSamples
+options:
+  minimumXcodeGenVersion: 2.44.0
+configs:
+  Debug: debug
+  Internal: release
+  Release: release
+packages:
+  MZAppFoundation:
+    path: ..
+settings:
+  base:
+    SWIFT_VERSION: '6.0'
+    SWIFT_STRICT_CONCURRENCY: complete
+    GENERATE_INFOPLIST_FILE: true
+    MARKETING_VERSION: 0.1.0
+    CURRENT_PROJECT_VERSION: 1
+    CODE_SIGNING_ALLOWED: false
+    ENABLE_USER_SCRIPT_SANDBOXING: true
+targetTemplates:
+  Base:
+    type: application
+    sources:
+    - Sources
+    info:
+      path: Info/${target_name}.plist
+      properties:
+        CFBundleDisplayName: MZ Foundation
+        CFBundleURLTypes:
+        - CFBundleURLSchemes:
+          - mzsample
+        UIApplicationSceneManifest:
+          UIApplicationSupportsMultipleScenes: true
+          UIApplicationPreferredDefaultSceneSessionRole: UIWindowSceneSessionRoleApplication
+        UILaunchScreen: {}
+        UISupportedInterfaceOrientations:
+        - UIInterfaceOrientationPortrait
+        - UIInterfaceOrientationPortraitUpsideDown
+        - UIInterfaceOrientationLandscapeLeft
+        - UIInterfaceOrientationLandscapeRight
+        FirebaseAutomaticScreenReportingEnabled: false
+        FIREBASE_ANALYTICS_COLLECTION_ENABLED: false
+        GOOGLE_ANALYTICS_IDFV_COLLECTION_ENABLED: false
+        GOOGLE_ANALYTICS_DEFAULT_ALLOW_AD_PERSONALIZATION_SIGNALS: false
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.matteozajac.mzfoundation.${target_name}
+      configs:
+        Debug:
+          SWIFT_ACTIVE_COMPILATION_CONDITIONS: $(inherited) DEBUG
+        Internal:
+          SWIFT_ACTIVE_COMPILATION_CONDITIONS: $(inherited) MZ_INTERNAL
+targets:
+  FoundationLocal:
+    templates:
+    - Base
+    platform: iOS
+    deploymentTarget: '26.0'
+    dependencies:
+    - package: MZAppFoundation
+      product: MZAppFoundation
+    settings:
+      base:
+        SUPPORTED_PLATFORMS: iphonesimulator
+        SWIFT_ACTIVE_COMPILATION_CONDITIONS: $(inherited) MZ_LOCAL
+  FoundationDevice:
+    templates:
+    - Base
+    platform: iOS
+    deploymentTarget: '26.0'
+    dependencies:
+    - package: MZAppFoundation
+      product: MZAppFoundationFirebase
+    settings:
+      base:
+        SUPPORTED_PLATFORMS: iphoneos
+  FoundationVisionLocal:
+    templates:
+    - Base
+    platform: visionOS
+    deploymentTarget: '26.0'
+    dependencies:
+    - package: MZAppFoundation
+      product: MZAppFoundation
+    settings:
+      base:
+        SUPPORTED_PLATFORMS: xrsimulator
+        SWIFT_ACTIVE_COMPILATION_CONDITIONS: $(inherited) MZ_LOCAL
+  FoundationVisionDevice:
+    templates:
+    - Base
+    platform: visionOS
+    deploymentTarget: '26.0'
+    dependencies:
+    - package: MZAppFoundation
+      product: MZAppFoundationLive
+    settings:
+      base:
+        SUPPORTED_PLATFORMS: xros
+  FoundationUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    deploymentTarget: '26.0'
+    sources:
+    - UITests
+    dependencies:
+    - target: FoundationLocal
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.matteozajac.mzfoundation.uitests
+        GENERATE_INFOPLIST_FILE: true
+schemes:
+  FoundationLocal:
+    build:
+      targets:
+        FoundationLocal: all
+    run:
+      config: Debug
+    test:
+      config: Debug
+      targets:
+      - FoundationUITests
+  FoundationDevice:
+    build:
+      targets:
+        FoundationDevice: all
+    run:
+      config: Internal
+  FoundationVisionLocal:
+    build:
+      targets:
+        FoundationVisionLocal: all
+    run:
+      config: Debug
+  FoundationVisionDevice:
+    build:
+      targets:
+        FoundationVisionDevice: all
+    run:
+      config: Internal

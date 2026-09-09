@@ -1,0 +1,11 @@
+# Adopting existing apps
+
+No existing app was migrated in the initial delivery. Perform one app migration at a time with its own behavior checks and release policy.
+
+- **TwinGlyph:** retain game-specific access rules and `TwinGlyphPurchaseService` presentation/recovery policy; replace its provider with the shared purchases interface. Map `full_access` explicitly. Preserve its URL scheme, and migrate the existing developer preference key deliberately. Public Pulse inclusion changes its current binary policy. Keep RealityKit/Crown and Game Center outside this package.
+- **Masseter:** retain typed event schemas and channel-specific preferences; replace provider implementations and composition. Do not move health/private data into generic metadata. Its watch telemetry relay remains app-owned.
+- **Second Take:** preserve its off-by-default analytics and diagnostics policy and restricted technical event vocabulary. Do not enable automatic crash reporting merely because the package's new-app default permits it: use a diagnostics adapter/policy matching the app's approved contract before migration. Rehearsal text never enters logs. Ads and purchase access rules remain app-owned.
+- **Roamline:** retain analytics privacy allowlists, structured categories and app-specific network redaction. Move Pulse setup and provider fan-out into the package; preserve watch/phone and playback behavior. Keep existing archive symbol verification requirements until shared verification proves equivalent.
+- **JoinOurDay:** preserve backend Firebase initialization for Auth/Firestore/Functions/App Check, and existing billing identity binding. The package owns Analytics only. Reconcile singleton ownership and remove direct SDK calls from the local target. Preserve existing deep-link handling and keep work within the JoinOurDay team.
+
+Migrate by adapting app events and domain protocols to package-owned values first, replacing initialization second, removing duplicate package dependencies third, then proving local binary isolation and device behavior. Never remove an SDK dependency still required by an app-owned backend feature just to make an audit pass. Report that residual dependency precisely.

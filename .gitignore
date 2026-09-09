@@ -1,0 +1,15 @@
+.build/
+.swiftpm/
+.DS_Store
+DerivedData/
+output/
+*.xcodeproj/
+*.xcworkspace/
+__pycache__/
+.venv/
+.env
+.env.*
+*.p8
+*.p12
+*.mobileprovision
+.mzappfoundation/state.json
