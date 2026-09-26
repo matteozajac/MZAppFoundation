@@ -7,7 +7,7 @@ public struct DeveloperConsole: View {
     public init(options: DeveloperOptions) { self.options = options }
     public var body: some View {
         NavigationStack {
-            if options.isEnabled { ConsoleView(store: .shared, mode: .all) }
+            if options.isEnabled { ConsoleView(store: .shared, mode: .logs) }
             else { ContentUnavailableView("Developer mode is off", systemImage: "lock") }
         }
         .accessibilityIdentifier("mz.developer.console")

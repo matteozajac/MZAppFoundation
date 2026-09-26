@@ -18,10 +18,16 @@ public struct DiagnosticIssue: Equatable, Sendable {
     public let code: String
     public let category: String
     public let metadata: [String: TelemetryValue]
-    public init(code: String, category: String, metadata: [String: TelemetryValue] = [:]) {
+    public let error: ErrorSnapshot?
+    public let source: LogSource
+    public init(code: String, category: String, metadata: [String: TelemetryValue] = [:],
+                error: ErrorSnapshot? = nil, source: LogSource? = nil,
+                file: String = #fileID, function: String = #function, line: UInt = #line) {
         self.code = code
         self.category = category
         self.metadata = metadata
+        self.error = error
+        self.source = source ?? LogSource(file: file, function: function, line: line)
     }
 }
 
@@ -68,7 +74,8 @@ public struct DiagnosticIssue: Equatable, Sendable {
         }
     }
     public func record(_ issue: DiagnosticIssue) {
-        let safe = DiagnosticIssue(code: issue.code, category: issue.category, metadata: redaction.sanitize(issue.metadata))
+        let safe = DiagnosticIssue(code: issue.code, category: issue.category, metadata: redaction.sanitize(issue.metadata),
+                                   error: issue.error, source: issue.source)
         for engine in diagnostics where engine.delivery == .local || (remoteAllowed && preferences.diagnostics) {
             _ = engine.record(safe)
         }

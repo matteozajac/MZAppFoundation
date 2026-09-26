@@ -81,3 +81,34 @@ Create `InstrumentedSession(options: services.developerOptions)` and use `data(f
 ## SDK compatibility
 
 Pulse is pinned to 5.2.1: 5.2.3 failed the visionOS sample build because `RichTextViewSearchToobar-ios.swift` calls `glassEffect`, which is unavailable on visionOS. Do not upgrade without both platform builds. RevenueCat 5.88.0, Sentry 9.27.0 and Firebase 12.18.0 are pinned. Firebase's `FirebaseAnalyticsCore` package product exports the `FirebaseAnalytics` Swift module.
+
+## Structured diagnostic logging (0.2.0)
+
+Use the injected `services.logger` for technical logging:
+
+```swift
+logger.error("Model loading failed", error: error, category: "model",
+             metadata: ["model_id": .string(modelID)])
+```
+
+`LogEntry` and `DiagnosticIssue` retain optional `ErrorSnapshot` and `LogSource` values.
+Wrappers forward caller file/function/line. Error snapshots are synchronous, immutable,
+and SDK-independent: type, domain, signed code, at most eight underlying causes,
+and up to 64 stack frames. Supplied `ErrorStackProviding` stacks retain their provenance;
+otherwise frames are explicitly labeled as reporting-time evidence. Arbitrary
+localized descriptions and userInfo are excluded; app-owned `LoggableError` messages
+must be audited, technical text. Never interpolate user-authored text into these messages.
+
+AppServices routes error logs once through diagnostics; the raw local sink handles
+Pulse persistence. Warnings remain local. Pulse shows error evidence in metadata and
+caller location in its native source fields; Sentry receives exception and diagnostic
+context fields only when remote diagnostics are enabled. App/build context stays in
+metadata/session information, and analytics names are never rewritten for display.
+
+Pulse 5.2.1 strips whitespace from metadata passed to `storeMessage`. The adapter
+uses normal store insertion, then corrects the identified row on Pulse's public
+Core Data write context, before returning. Frames use separate fields because
+Pulse's metadata format is newline-delimited. This compatibility workaround stays
+inside the Pulse adapter and is covered by a persistence test. Error/warning logs
+with whitespace incur an immediate local save; ordinary token/numeric metadata
+continues through Pulse's normal batching. The console defaults to Logs.

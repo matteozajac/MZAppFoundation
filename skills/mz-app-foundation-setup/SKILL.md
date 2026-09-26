@@ -21,6 +21,10 @@ App feature code imports `MZAppFoundation`, with injected package-owned interfac
 6. `setup.py verify` checks source wiring, but does not prove binary isolation. Build/run local iOS/visionOS targets, build device adapters, and use `scripts/audit_binary.py <local.app> --local`. Inspect build logs for compiled vendor targets; resolution/download alone is permitted. Run the core tests and appropriate app behavior tests. Check shake, console window, enable/disable links, purchase recovery and telemetry policy.
 7. Run apply again and ensure no unintended diff. Record implemented, configured, built, simulator-verified, device-verified, and provider-verified status separately. Missing credentials, absent products, or unperformed device checks are explicit partial states. Commit/push only the requested repository work.
 
+## Diagnostic logging
+
+Use [app-logging](../app-logging/SKILL.md) when wiring or migrating logs. MZAppFoundation 0.2.0 adds error-taking `AppLogging.error` calls, `ErrorSnapshot`, source locations, and shared Pulse/Sentry routing. Pass the actual Error whenever available; keep metadata out of messages and forward caller location through wrappers. Capture snapshots before asynchronous delivery. Reporting stacks are not original throw stacks. Verify PulseUI error details on each platform. Existing diagnostic delivery preferences remain authoritative.
+
 ## Non-obvious constraints
 
 - Public releases include Pulse, but developer mode defaults off. Local/Debug/Internal defaults on; an explicit persisted enable/disable wins. Deep links never change remote delivery or purchase verification.

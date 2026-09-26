@@ -73,12 +73,41 @@ import Sentry
     }
     func record(_ issue: DiagnosticIssue) -> EngineResult {
         guard gate?.allowsDelivery == true else { return .ignored }
-        let event = Event(level: .error)
-        event.message = SentryMessage(formatted: issue.code)
-        event.tags = ["issue_code": issue.code, "issue_category": issue.category]
+        let event = Self.event(for: issue)
         SentrySDK.capture(event: event)
         return .recorded
     }
+    /// Pure mapping also used by adapter tests; no SDK initialization or transport.
+    static func event(for issue: DiagnosticIssue) -> Event {
+        let event = Event(level: .error)
+        event.message = SentryMessage(formatted: issue.code)
+        event.tags = ["issue_code": issue.code, "issue_category": issue.category]
+        var context: [String: Any] = issue.metadata.mapValues { $0.rendered }
+        context["file"] = issue.source.file
+        context["function"] = issue.source.function
+        context["line"] = issue.source.line
+        if let error = issue.error {
+            context["stack_origin"] = error.stack.origin.rawValue
+            context["stack_symbols"] = error.stack.symbols
+            event.exceptions = error.causes.reversed().map { cause in
+                let exception = Exception(value: cause.message ?? "\(cause.domain) (\(cause.code))", type: cause.type)
+                exception.module = cause.domain
+                return exception
+            }
+            let frames = error.stack.symbols.enumerated().reversed().map { index, symbol in
+                let frame = Frame()
+                frame.function = symbol
+                if error.stack.addresses.indices.contains(index) {
+                    frame.instructionAddress = "0x" + String(error.stack.addresses[index], radix: 16)
+                }
+                return frame
+            }
+            event.exceptions?.last?.stacktrace = SentryStacktrace(frames: frames, registers: [:])
+        }
+        event.context = ["app_diagnostic": context]
+        return event
+    }
+
     func breadcrumb(_ event: TelemetryEvent) {
         guard gate?.allowsDelivery == true else { return }
         let breadcrumb = Breadcrumb(level: .info, category: "app")

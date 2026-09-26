@@ -58,6 +58,10 @@ struct SampleView: View {
                     }.disabled(busy)
                 }
                 Section("Developer tools") {
+                    Button("Record sample error") {
+                        services.logger.error("Sample model loading failed", error: SampleLoadingError(),
+                                              category: "model", metadata: ["model_id": .string("sample")])
+                    }.accessibilityIdentifier("sample.error")
                     Toggle("Developer mode", isOn: Binding(get: { services.developerOptions.isEnabled },
                                                             set: { services.developerOptions.setEnabled($0) }))
                     Button("Open console", systemImage: "terminal") { services.developerOptions.requestConsole() }
@@ -74,4 +78,8 @@ struct SampleView: View {
             .tint(.indigo)
         }
     }
+}
+
+struct SampleLoadingError: LoggableError {
+    var logMessage: String { "Model weights are unavailable" }
 }

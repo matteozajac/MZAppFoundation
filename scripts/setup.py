@@ -44,7 +44,7 @@ def load(root, config_path):
     public_key = config.get('providers', {}).get('revenuecat_public_key')
     if public_key and not public_key.startswith('appl_'):
         raise ValueError('RevenueCat configuration requires an Apple public SDK key')
-    if 'package_path' not in config and not re.fullmatch(r'\d+\.\d+\.\d+', config.get('package_version', '0.1.0')):
+    if 'package_path' not in config and not re.fullmatch(r'\d+\.\d+\.\d+', config.get('package_version', '0.2.0')):
         raise ValueError('package_version must be an exact semantic version')
     return config
 
@@ -157,7 +157,7 @@ def mutate_xcodegen(root, config):
     local_name = config['target'] + 'Local'
     spec.setdefault('configs', {'Debug': 'debug', 'Release': 'release'}).setdefault('Internal', 'release')
     package = {'path': config['package_path']} if config.get('package_path') else {
-        'url': 'git@github.com:matteozajac/MZAppFoundation.git', 'version': config.get('package_version', '0.1.0')}
+        'url': 'git@github.com:matteozajac/MZAppFoundation.git', 'version': config.get('package_version', '0.2.0')}
     spec.setdefault('packages', {})['MZAppFoundation'] = package
     live_product = 'MZAppFoundationFirebase' if config['platform'] == 'iOS' else 'MZAppFoundationLive'
     base_dependencies = [d for d in target.get('dependencies', []) if d.get('package') != 'MZAppFoundation' and d.get('product', d.get('package')) not in VENDOR_PRODUCTS]

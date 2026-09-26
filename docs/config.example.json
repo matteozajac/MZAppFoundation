@@ -6,7 +6,7 @@
   "url_scheme": "myapp",
   "platform": "iOS",
   "deployment_target": "26.0",
-  "package_version": "0.1.0",
+  "package_version": "0.2.0",
   "analytics_enabled": true,
   "diagnostics_enabled": true,
   "events": {"app_opened": [], "purchase_started": ["source"]},

@@ -12,7 +12,7 @@ import Foundation
     public init(configuration: AppConfiguration, telemetry: Telemetry, logger: any AppLogging,
                 purchases: any PurchaseProviding, developerOptions: DeveloperOptions) {
         self.configuration = configuration; self.telemetry = telemetry
-        self.analytics = telemetry; self.diagnostics = telemetry; self.logger = logger
+        self.analytics = telemetry; self.diagnostics = telemetry; self.logger = DiagnosticsLogger(local: logger, diagnostics: telemetry)
         self.purchases = purchases; self.developerOptions = developerOptions
     }
     public static func testing(configuration: AppConfiguration, schema: TelemetrySchema,

@@ -45,7 +45,7 @@ unless package
   else
     package = project.new(Xcodeproj::Project::Object::XCRemoteSwiftPackageReference)
     package.repositoryURL = 'git@github.com:matteozajac/MZAppFoundation.git'
-    package.requirement = { 'kind' => 'exactVersion', 'version' => config.fetch('package_version', '0.1.0') }
+    package.requirement = { 'kind' => 'exactVersion', 'version' => config.fetch('package_version', '0.2.0') }
   end
   project.root_object.package_references << package
 end

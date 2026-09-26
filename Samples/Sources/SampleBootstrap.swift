@@ -26,7 +26,14 @@ import MZAppFoundationFirebase
                                                        title: "Demo Premium", localizedPrice: "Simulated")])
         mock.purchaseResult = .success(.purchased(.init(active: ["premium"])))
         mock.restoreResult = .success(.init(active: ["premium"]))
-        return LocalServices.make(configuration: configuration, schema: schema, purchases: mock)
+        let services = LocalServices.make(configuration: configuration, schema: schema, purchases: mock)
+        if ProcessInfo.processInfo.arguments.contains("--logging-demo") {
+            services.logger.error("Sample model loading failed", error: SampleLoadingError(),
+                                  category: "model", metadata: ["model_id": .string("sample")])
+            services.developerOptions.setEnabled(true)
+            services.developerOptions.requestConsole()
+        }
+        return services
         #else
         // Samples intentionally contain no provider credentials. Configure a real consumer using the setup skill.
         do {
@@ -38,7 +45,7 @@ import MZAppFoundationFirebase
             #endif
         } catch {
             let services = LocalServices.make(configuration: configuration, schema: schema, purchases: UnavailablePurchases())
-            services.logger.log(LogEntry("bootstrap_failed", level: .error))
+            services.logger.error("Bootstrap failed", error: error)
             return services
         }
         #endif

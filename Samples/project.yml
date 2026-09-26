@@ -109,7 +109,38 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.matteozajac.mzfoundation.uitests
         GENERATE_INFOPLIST_FILE: true
+  FoundationVisionUITests:
+    type: bundle.ui-testing
+    platform: visionOS
+    deploymentTarget: '26.0'
+    sources:
+    - path: UITests/LoggingUITests.swift
+    dependencies:
+    - target: FoundationVisionLocal
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.matteozajac.mzfoundation.visionuitests
+  FoundationAdapterTests:
+    type: bundle.unit-test
+    platform: iOS
+    deploymentTarget: '26.0'
+    sources:
+    - AdapterTests
+    dependencies:
+    - package: MZAppFoundation
+      product: MZAppFoundationLive
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.matteozajac.mzfoundation.adaptertests
 schemes:
+  FoundationAdapterTests:
+    build:
+      targets:
+        FoundationAdapterTests: all
+    test:
+      config: Debug
+      targets:
+      - FoundationAdapterTests
   FoundationLocal:
     build:
       targets:
@@ -132,6 +163,10 @@ schemes:
         FoundationVisionLocal: all
     run:
       config: Debug
+    test:
+      config: Debug
+      targets:
+      - FoundationVisionUITests
   FoundationVisionDevice:
     build:
       targets:

@@ -1,10 +1,16 @@
 import Foundation
+import CoreData
+import OSLog
 import MZAppFoundation
 import Pulse
 
 @MainActor public final class PulseLogger: AppLogging {
     private let redaction: RedactionPolicy
-    public init(redaction: RedactionPolicy = .init()) { self.redaction = redaction }
+    private let store: LoggerStore
+    public init(redaction: RedactionPolicy = .init(), store: LoggerStore = .shared) {
+        self.redaction = redaction
+        self.store = store
+    }
     public func log(_ entry: LogEntry) {
         let entry = redaction.sanitize(entry)
         let level: LoggerStore.Level = switch entry.level {
@@ -14,8 +20,55 @@ import Pulse
         case .warning: .warning
         case .error: .error
         }
-        LoggerStore.shared.storeMessage(label: entry.category, level: level, message: entry.message,
-                                        metadata: entry.metadata.mapValues { .string($0.rendered) })
+        var metadata = entry.metadata.mapValues { $0.rendered }
+        if let error = entry.error {
+            for (index, cause) in error.causes.enumerated() {
+                let prefix = "error.cause.\(index)"
+                metadata[prefix + ".type"] = cause.type
+                metadata[prefix + ".domain"] = cause.domain
+                metadata[prefix + ".code"] = String(cause.code)
+                metadata[prefix + ".message"] = cause.message
+            }
+            metadata["error.stack"] = error.stack.origin.rawValue
+            for (index, symbol) in error.stack.symbols.enumerated() {
+                metadata[String(format: "error.stack.%02d", index)] = symbol
+            }
+        }
+        // Pulse 5.2.1's public storeMessage strips ALL whitespace from metadata.
+        // Preserve its normal insertion/event/session path, then correct only
+        // the affected row through Pulse's public Core Data write context.
+        // Separate frame fields avoid its newline-delimited metadata format.
+        let needsCorrection = metadata.values.contains { $0.contains(where: \.isWhitespace) }
+        let marker = UUID().uuidString
+        var stored = metadata
+        if needsCorrection { stored["mz_record_id"] = marker }
+        store.storeMessage(label: entry.category, level: level, message: entry.message,
+                           metadata: stored.mapValues { .string($0) }, file: entry.source.file,
+                           function: entry.source.function, line: entry.source.line)
+        if needsCorrection { preserveMetadata(metadata, marker: marker) }
+    }
+
+    private func preserveMetadata(_ metadata: [String: String], marker: String) {
+        let context = store.backgroundContext
+        // Queue confinement and FIFO ordering ensure insertion precedes correction,
+        // including when a caller configures a synchronous Pulse store.
+        context.performAndWait {
+            do {
+                let request = NSFetchRequest<LoggerMessageEntity>(entityName: "LoggerMessageEntity")
+                request.predicate = NSPredicate(format: "rawMetadata CONTAINS %@", "mz_record_id: " + marker)
+                request.fetchLimit = 1
+                guard let message = try context.fetch(request).first else { return }
+                message.rawMetadata = metadata.sorted { $0.key < $1.key }.map { key, value in
+                    let key = key.replacingOccurrences(of: ":", with: "").components(separatedBy: .newlines).joined()
+                    let value = value.components(separatedBy: .newlines).joined(separator: " ")
+                    return "\(key): \(value)"
+                }.joined(separator: "\n")
+                try context.save()
+            } catch {
+                // Logging failure must not recursively enter the diagnostics router.
+                Logger(subsystem: "MZAppFoundation", category: "Pulse").error("Unable to preserve Pulse metadata formatting")
+            }
+        }
     }
 }
 
@@ -29,7 +82,8 @@ import Pulse
         return .recorded
     }
     public func record(_ issue: DiagnosticIssue) -> EngineResult {
-        logger.log(LogEntry(issue.code, level: .error, category: issue.category, metadata: issue.metadata))
+        logger.log(LogEntry(issue.code, level: .error, category: issue.category, metadata: issue.metadata,
+                            error: issue.error, source: issue.source))
         return .recorded
     }
     public func breadcrumb(_ event: TelemetryEvent) {
