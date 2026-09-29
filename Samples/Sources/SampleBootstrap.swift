@@ -9,6 +9,15 @@ import MZAppFoundationFirebase
 #endif
 
 @MainActor enum SampleBootstrap {
+    #if os(iOS)
+    static let reporting: DeveloperReporting = {
+        let reporting = DeveloperReporting(archivePrefix: "mzsample")
+        if ProcessInfo.processInfo.arguments.contains("--ui-testing") || ProcessInfo.processInfo.arguments.contains("--logging-demo") {
+            reporting.recordsRecentActivity = false
+        }
+        return reporting
+    }()
+    #endif
     static func make() -> AppServices {
         let environment: AppEnvironment
         #if MZ_LOCAL || DEBUG || targetEnvironment(simulator)

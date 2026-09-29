@@ -1,4 +1,5 @@
 import MZAppFoundation
+import MZAppFoundationLocal
 import SwiftUI
 
 struct SampleView: View {
@@ -64,9 +65,14 @@ struct SampleView: View {
                     }.accessibilityIdentifier("sample.error")
                     Toggle("Developer mode", isOn: Binding(get: { services.developerOptions.isEnabled },
                                                             set: { services.developerOptions.setEnabled($0) }))
-                    Button("Open console", systemImage: "terminal") { services.developerOptions.requestConsole() }
+                    Button("Open console", systemImage: "ladybug") { services.developerOptions.requestConsole() }
                         .disabled(!services.developerOptions.isEnabled)
                 }
+                #if os(iOS)
+                if services.developerOptions.isEnabled {
+                    DeveloperReportingSettings(reporting: SampleBootstrap.reporting)
+                }
+                #endif
                 Section {
                     Text(services.configuration.environment == .local
                          ? "Local composition · simulated purchases · no remote SDK delivery"

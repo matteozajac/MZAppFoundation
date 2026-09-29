@@ -13,7 +13,7 @@ settings:
     SWIFT_VERSION: '6.0'
     SWIFT_STRICT_CONCURRENCY: complete
     GENERATE_INFOPLIST_FILE: true
-    MARKETING_VERSION: 0.1.0
+    MARKETING_VERSION: 0.3.0
     CURRENT_PROJECT_VERSION: 1
     CODE_SIGNING_ALLOWED: false
     ENABLE_USER_SCRIPT_SANDBOXING: true
@@ -63,6 +63,11 @@ targets:
       base:
         SUPPORTED_PLATFORMS: iphonesimulator
         SWIFT_ACTIVE_COMPILATION_CONDITIONS: $(inherited) MZ_LOCAL
+    info:
+      path: Info/FoundationLocal.plist
+      properties:
+        NSMicrophoneUsageDescription: Record a voice message when you choose to describe
+          a bug.
   FoundationDevice:
     templates:
     - Base
@@ -74,6 +79,11 @@ targets:
     settings:
       base:
         SUPPORTED_PLATFORMS: iphoneos
+    info:
+      path: Info/FoundationDevice.plist
+      properties:
+        NSMicrophoneUsageDescription: Record a voice message when you choose to describe
+          a bug.
   FoundationVisionLocal:
     templates:
     - Base
@@ -132,6 +142,20 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.matteozajac.mzfoundation.adaptertests
+  FoundationReportingTests:
+    type: bundle.unit-test
+    platform: iOS
+    deploymentTarget: '26.0'
+    sources:
+    - ../Tests/ReportingTests
+    dependencies:
+    - package: MZAppFoundation
+      product: MZAppFoundation
+    - package: MZAppFoundation
+      product: MZAppFoundationReporting
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.matteozajac.mzfoundation.reportingtests
 schemes:
   FoundationAdapterTests:
     build:
@@ -173,3 +197,11 @@ schemes:
         FoundationVisionDevice: all
     run:
       config: Internal
+  FoundationReportingTests:
+    build:
+      targets:
+        FoundationReportingTests: all
+    test:
+      config: Debug
+      targets:
+      - FoundationReportingTests

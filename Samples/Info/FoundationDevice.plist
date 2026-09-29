@@ -37,6 +37,8 @@
 	<false/>
 	<key>GOOGLE_ANALYTICS_IDFV_COLLECTION_ENABLED</key>
 	<false/>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Record a voice message when you choose to describe a bug.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationPreferredDefaultSceneSessionRole</key>

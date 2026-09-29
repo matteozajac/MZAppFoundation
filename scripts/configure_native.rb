@@ -45,9 +45,12 @@ unless package
   else
     package = project.new(Xcodeproj::Project::Object::XCRemoteSwiftPackageReference)
     package.repositoryURL = 'git@github.com:matteozajac/MZAppFoundation.git'
-    package.requirement = { 'kind' => 'exactVersion', 'version' => config.fetch('package_version', '0.2.0') }
+    package.requirement = { 'kind' => 'exactVersion', 'version' => config.fetch('package_version', '0.3.0') }
   end
   project.root_object.package_references << package
+end
+if package.isa == 'XCRemoteSwiftPackageReference'
+  package.requirement = { 'kind' => 'exactVersion', 'version' => config.fetch('package_version', '0.3.0') }
 end
 group = project.main_group.find_subpath('.mzappfoundation/Generated', true)
 group.set_source_tree('SOURCE_ROOT')
@@ -96,6 +99,9 @@ bootstrap = group.files.find { |f| f.path == 'MZBootstrap.swift' } || group.new_
         scene['UIApplicationSupportsMultipleScenes'] = true
         scene['UIApplicationPreferredDefaultSceneSessionRole'] ||= 'UIWindowSceneSessionRoleApplication'
       end
+      if config['bug_reporting'] && config['platform'] == 'iOS'
+        plist['NSMicrophoneUsageDescription'] ||= settings['INFOPLIST_KEY_NSMicrophoneUsageDescription'] || config.fetch('microphone_usage_description', 'Record a voice message when you choose to describe a bug.')
+      end
       urls = plist['CFBundleURLTypes'] ||= []
       urls << { 'CFBundleURLSchemes' => [config['url_scheme']] } unless urls.any? { |u| Array(u['CFBundleURLSchemes']).include?(config['url_scheme']) }
       %w[FirebaseAutomaticScreenReportingEnabled FIREBASE_ANALYTICS_COLLECTION_ENABLED GOOGLE_ANALYTICS_IDFV_COLLECTION_ENABLED GOOGLE_ANALYTICS_DEFAULT_ALLOW_AD_PERSONALIZATION_SIGNALS].each { |key| plist[key] = false }
@@ -105,6 +111,9 @@ bootstrap = group.files.find { |f| f.path == 'MZBootstrap.swift' } || group.new_
       # Generated Info.plist URL array is supplied through a concrete companion plist.
       absolute = root.join('.mzappfoundation/Generated/App-Info.plist')
       plist = {'CFBundleURLTypes' => [{'CFBundleURLSchemes' => [config['url_scheme']]}]}
+      if config['bug_reporting'] && config['platform'] == 'iOS'
+        plist['NSMicrophoneUsageDescription'] = settings['INFOPLIST_KEY_NSMicrophoneUsageDescription'] || config.fetch('microphone_usage_description', 'Record a voice message when you choose to describe a bug.')
+      end
       if config['platform'] == 'visionOS'
         plist['UIApplicationSceneManifest'] = {'UIApplicationSupportsMultipleScenes' => true, 'UIApplicationPreferredDefaultSceneSessionRole' => 'UIWindowSceneSessionRoleApplication'}
       end

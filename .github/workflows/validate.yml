@@ -24,8 +24,8 @@ jobs:
           brew install xcodegen
           pip install -r scripts/requirements.txt
           bundle install --gemfile scripts/Gemfile
-      - name: Setup fixture tests
-        run: BUNDLE_GEMFILE=scripts/Gemfile bundle exec python3 scripts/test_setup.py
+      - name: Setup and report tooling tests
+        run: BUNDLE_GEMFILE=scripts/Gemfile bundle exec python3 -m unittest discover -s scripts -p 'test_*.py'
       - name: Generate sample projects
         working-directory: Samples
         run: xcodegen generate

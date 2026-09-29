@@ -112,3 +112,7 @@ Pulse's metadata format is newline-delimited. This compatibility workaround stay
 inside the Pulse adapter and is covered by a persistence test. Error/warning logs
 with whitespace incur an immediate local save; ordinary token/numeric metadata
 continues through Pulse's normal batching. The console defaults to Logs.
+
+## Local bug reporting (0.3.0)
+
+The optional iOS `MZAppFoundationReporting` module supplies rolling silent screen capture, screenshots, title-or-voice reports and ZIP sharing. `MZAppFoundationLocal` adapts the existing Pulse store and owns console integration. Add `bug_reporting: true` to setup configuration and follow [bug reporting integration](bug-reporting.md). The previous console-only interface remains source-compatible. No reporting types or third-party SDKs enter the standalone core package.

@@ -1,9 +1,10 @@
 # MZAppFoundation
 
-Private Swift infrastructure for Mateusz's Apple apps: typed analytics, injectable purchases, Sentry diagnostics, Firebase Analytics, Pulse, and developer tools.
+Private Swift infrastructure for Mateusz's Apple apps: typed analytics, injectable purchases, Sentry diagnostics, Firebase Analytics, Pulse, and developer tools. Version 0.3.0 adds iOS screen/audio bug reporting with a Ladybug action in the console and local Mac transcription tooling.
 
 Feature code uses `import MZAppFoundation`. A setup-managed bootstrap chooses local or live adapters. Simulator app targets link Pulse without RevenueCat/Sentry/Firebase Analytics. The standalone core package has no third-party dependencies.
 
+- [Bug reporting and platform support](docs/bug-reporting.md)
 - [Integration and build profiles](docs/integration.md)
 - [Existing-app migration guide](docs/migration.md)
 - [Setup skill](skills/mz-app-foundation-setup/SKILL.md)

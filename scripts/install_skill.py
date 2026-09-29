@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Install the repo-backed setup and logging skills globally without copying its source."""
+"""Install the repo-backed setup, logging and bug-report skills globally without copying its source."""
 import json
 import os
 from pathlib import Path
@@ -8,7 +8,7 @@ import subprocess
 repo = Path(__file__).resolve().parents[1]
 home = Path(os.environ.get('CODEX_HOME', str(Path.home() / '.codex')))
 revision = subprocess.run(['git', '-C', str(repo), 'rev-parse', 'HEAD'], capture_output=True, text=True).stdout.strip() or 'uncommitted'
-for name in ('mz-app-foundation-setup', 'app-logging'):
+for name in ('mz-app-foundation-setup', 'app-logging', 'app-bug-report'):
     source = repo / 'skills' / name
     destination = home / 'skills' / name
     destination.parent.mkdir(parents=True, exist_ok=True)

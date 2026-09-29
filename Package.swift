@@ -3,9 +3,11 @@ import PackageDescription
 
 let package = Package(
     name: "MZAppFoundation",
+    defaultLocalization: "en",
     platforms: [.iOS(.v26), .visionOS(.v26), .macOS(.v15)],
     products: [
         .library(name: "MZAppFoundation", targets: ["MZAppFoundationLocal"]),
+        .library(name: "MZAppFoundationReporting", targets: ["MZAppFoundationReporting"]),
         .library(name: "MZAppFoundationLive", targets: ["MZAppFoundationLive"]),
         .library(name: "MZAppFoundationFirebase", targets: ["MZAppFoundationFirebase"])
     ],
@@ -17,7 +19,9 @@ let package = Package(
     ],
     targets: [
         .target(name: "MZAppFoundation", path: "Packages/Core/Sources/MZAppFoundation"),
+        .target(name: "MZAppFoundationReporting", resources: [.process("Resources")]),
         .target(name: "MZAppFoundationLocal", dependencies: [
+            .target(name: "MZAppFoundationReporting", condition: .when(platforms: [.iOS])),
             "MZAppFoundation",
             .product(name: "Pulse", package: "Pulse"),
             .product(name: "PulseUI", package: "Pulse")
