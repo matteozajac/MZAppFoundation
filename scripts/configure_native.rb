@@ -26,6 +26,10 @@ unless local
   end
   target.dependencies.each { |dependency| local.add_dependency(dependency.target) if dependency.target }
 end
+# Xcode 16+ synchronized source groups have no per-file source build references.
+# Keep the target membership when creating or updating the local composition.
+local.file_system_synchronized_groups.clear
+local.file_system_synchronized_groups.concat(target.file_system_synchronized_groups)
 vendor_products = %w[RevenueCat RevenueCatUI Sentry Sentry-Dynamic FirebaseAnalytics FirebaseAnalyticsCore FirebaseCore Pulse PulseUI PulseProxy]
 [target, local].each do |t|
   t.package_product_dependencies.to_a.each do |dependency|
@@ -45,12 +49,12 @@ unless package
   else
     package = project.new(Xcodeproj::Project::Object::XCRemoteSwiftPackageReference)
     package.repositoryURL = 'git@github.com:matteozajac/MZAppFoundation.git'
-    package.requirement = { 'kind' => 'exactVersion', 'version' => config.fetch('package_version', '0.3.0') }
+    package.requirement = { 'kind' => 'exactVersion', 'version' => config.fetch('package_version', '0.3.1') }
   end
   project.root_object.package_references << package
 end
 if package.isa == 'XCRemoteSwiftPackageReference'
-  package.requirement = { 'kind' => 'exactVersion', 'version' => config.fetch('package_version', '0.3.0') }
+  package.requirement = { 'kind' => 'exactVersion', 'version' => config.fetch('package_version', '0.3.1') }
 end
 group = project.main_group.find_subpath('.mzappfoundation/Generated', true)
 group.set_source_tree('SOURCE_ROOT')

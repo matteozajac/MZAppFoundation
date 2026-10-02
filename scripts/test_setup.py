@@ -74,6 +74,28 @@ class SetupTests(unittest.TestCase):
             with self.assertRaises(ValueError): setup.load(root, path)
             with self.assertRaises(ValueError): setup.within(root, '../outside')
 
+    def test_native_synchronized_source_groups_survive_repeat_setup(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root, config = self.fixture(directory)
+            ruby = os.environ.get('RUBY', 'ruby')
+            subprocess.run([ruby, '-rxcodeproj', '-e',
+                'p = Xcodeproj::Project.new(ARGV[0]); t = p.new_target(:application, "Demo", :ios, "26.0"); '
+                'g = p.new(Xcodeproj::Project::Object::PBXFileSystemSynchronizedRootGroup); g.path = "Sources"; '
+                'g.source_tree = "<group>"; p.main_group.children << g; t.file_system_synchronized_groups << g; p.save',
+                str(root / 'Demo.xcodeproj')], check=True, capture_output=True)
+            config.update(project_type='native', project='Demo.xcodeproj')
+            setup.apply(root, config)
+            before = (root / 'Demo.xcodeproj/project.pbxproj').read_bytes()
+            setup.apply(root, config)
+            self.assertEqual(before, (root / 'Demo.xcodeproj/project.pbxproj').read_bytes())
+            result = subprocess.run([ruby, '-rxcodeproj', '-rjson', '-e',
+                'p = Xcodeproj::Project.open(ARGV[0]); puts JSON.generate(p.targets.map { |t| t.file_system_synchronized_groups.map(&:uuid) })',
+                str(root / 'Demo.xcodeproj')], check=True, text=True, capture_output=True)
+            groups = json.loads(result.stdout)
+            self.assertEqual(len(groups), 2)
+            self.assertEqual(len(groups[0]), 1)
+            self.assertEqual(groups[0], groups[1])
+
     def test_sdk_imports_block_verification(self):
         with tempfile.TemporaryDirectory() as directory:
             root, config = self.fixture(directory)

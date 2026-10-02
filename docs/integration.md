@@ -80,7 +80,7 @@ Create `InstrumentedSession(options: services.developerOptions)` and use `data(f
 
 ## SDK compatibility
 
-Pulse is pinned to 5.2.1: 5.2.3 failed the visionOS sample build because `RichTextViewSearchToobar-ios.swift` calls `glassEffect`, which is unavailable on visionOS. Do not upgrade without both platform builds. RevenueCat 5.88.0, Sentry 9.27.0 and Firebase 12.18.0 are pinned. Firebase's `FirebaseAnalyticsCore` package product exports the `FirebaseAnalytics` Swift module.
+Pulse is pinned to 5.2.1: 5.2.3 failed the visionOS sample build because `RichTextViewSearchToobar-ios.swift` calls `glassEffect`, which is unavailable on visionOS. Do not upgrade without both platform builds. RevenueCat 5.88.0, Sentry 9.27.0 and Firebase 12.19.2 are pinned. Firebase's `FirebaseAnalyticsCore` package product exports the `FirebaseAnalytics` Swift module.
 
 ## Structured diagnostic logging (0.2.0)
 

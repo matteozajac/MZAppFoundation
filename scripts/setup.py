@@ -52,12 +52,12 @@ def load(root, config_path):
     public_key = config.get('providers', {}).get('revenuecat_public_key')
     if public_key and not public_key.startswith('appl_'):
         raise ValueError('RevenueCat configuration requires an Apple public SDK key')
-    if 'package_path' not in config and not re.fullmatch(r'\d+\.\d+\.\d+', config.get('package_version', '0.3.0')):
+    if 'package_path' not in config and not re.fullmatch(r'\d+\.\d+\.\d+', config.get('package_version', '0.3.1')):
         raise ValueError('package_version must be an exact semantic version')
     if not isinstance(config.get('bug_reporting', False), bool):
         raise ValueError('bug_reporting must be a boolean')
     if config.get('bug_reporting'):
-        if 'package_path' not in config and tuple(map(int, config.get('package_version', '0.3.0').split('.'))) < (0, 3, 0):
+        if 'package_path' not in config and tuple(map(int, config.get('package_version', '0.3.1').split('.'))) < (0, 3, 0):
             raise ValueError('Bug reporting requires MZAppFoundation 0.3.0 or later')
         if config['platform'] != 'iOS':
             raise ValueError('Bug reporting in 0.3.0 requires iOS; keep the standard console on other platforms')
@@ -145,7 +145,7 @@ import MZAppFoundationFirebase
             #endif
         }} catch {{
             let fallback = LocalServices.make(configuration: configuration, schema: schema, purchases: UnavailablePurchases())
-            fallback.logger.log(LogEntry("bootstrap_configuration_failed", level: .error, category: "setup"))
+            fallback.logger.error("Bootstrap configuration failed", error: error, category: "setup")
             return fallback
         }}
         #endif
@@ -181,7 +181,7 @@ def mutate_xcodegen(root, config):
     local_name = config['target'] + 'Local'
     spec.setdefault('configs', {'Debug': 'debug', 'Release': 'release'}).setdefault('Internal', 'release')
     package = {'path': config['package_path']} if config.get('package_path') else {
-        'url': 'git@github.com:matteozajac/MZAppFoundation.git', 'version': config.get('package_version', '0.3.0')}
+        'url': 'git@github.com:matteozajac/MZAppFoundation.git', 'version': config.get('package_version', '0.3.1')}
     spec.setdefault('packages', {})['MZAppFoundation'] = package
     live_product = 'MZAppFoundationFirebase' if config['platform'] == 'iOS' else 'MZAppFoundationLive'
     base_dependencies = [d for d in target.get('dependencies', []) if d.get('package') != 'MZAppFoundation' and d.get('product', d.get('package')) not in VENDOR_PRODUCTS]
