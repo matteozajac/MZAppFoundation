@@ -16,7 +16,7 @@ Reporting-aware Foundation console and recording pages share the same `Developer
 
 ## Short developer links
 
-The routes are `<app-scheme>://developer/enable` and `<app-scheme>://developer/disable`, for example `bedtimestories://developer/enable`. Bundle identifiers are absent. Use `DeveloperDeepLink.url(for:scheme:)`; older host-parameter overloads remain source compatible but produce the same short route.
+The routes are `<app-scheme>://developer/enable` and `<app-scheme>://developer/disable`, for example `bedtimestories://developer/enable`. Bundle identifiers are absent. Use `DeveloperDeepLink.url(for:scheme:)`; older host-parameter overloads remain source compatible and produce the same short route when supplied an app-specific `scheme:`. Their retired shared-scheme default returns `nil`.
 
 Shared `mzappfoundation` links and older long routes are rejected. Apple documents that a shared custom scheme has an undefined target when multiple apps register it; it does not provide reliable app selection. Current setup removes that shared registration and preserves unrelated schemes. [Apple custom URL scheme documentation](https://developer.apple.com/documentation/xcode/defining-a-custom-url-scheme-for-your-app)
 
