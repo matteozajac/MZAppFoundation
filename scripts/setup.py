@@ -22,7 +22,10 @@ SAFETY = {'FirebaseAutomaticScreenReportingEnabled': False, 'FIREBASE_ANALYTICS_
 DEFAULT_MICROPHONE = 'Record a voice message when you choose to describe a bug.'
 
 def developer_settings_supported(config):
-    return 'package_path' in config or tuple(map(int, config.get('package_version', '0.5.0').split('.'))) >= (0, 5, 0)
+    return 'package_path' in config or tuple(map(int, config.get('package_version', '0.5.1').split('.'))) >= (0, 5, 0)
+
+def short_developer_links_supported(config):
+    return 'package_path' in config or tuple(map(int, config.get('package_version', '0.5.1').split('.'))) >= (0, 5, 1)
 
 def supported_platforms(config, local=False):
     return {'iOS': ('iphonesimulator', 'iphoneos'), 'visionOS': ('xrsimulator', 'xros'),
@@ -33,7 +36,7 @@ def build_metadata_script(config):
     if config.get('package_path'):
         command += ' --foundation-root ' + shlex.quote(config['package_path'])
     else:
-        command += ' --foundation-version ' + shlex.quote(config.get('package_version', '0.5.0'))
+        command += ' --foundation-version ' + shlex.quote(config.get('package_version', '0.5.1'))
     return command + ' --channel "$CONFIGURATION" --stamp-build-time --output "$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH/MZFoundationBuildMetadata.plist"'
 
 def provider_products(config):
@@ -146,9 +149,15 @@ def independent_device_bootstrap(config):
 
 def url_schemes(config):
     schemes = [config['url_scheme']]
-    if developer_settings_supported(config) and 'mzappfoundation' not in schemes:
+    if developer_settings_supported(config) and not short_developer_links_supported(config) and 'mzappfoundation' not in schemes:
         schemes.append('mzappfoundation')
     return schemes
+
+def remove_shared_scheme(entries, config):
+    if not short_developer_links_supported(config): return
+    for entry in entries:
+        entry['CFBundleURLSchemes'] = [scheme for scheme in entry.get('CFBundleURLSchemes', []) if scheme.lower() != 'mzappfoundation']
+    entries[:] = [entry for entry in entries if entry.get('CFBundleURLSchemes')]
 
 def reporting_enabled(config):
     return config.get('bug_reporting', False) and config['platform'] == 'iOS'
@@ -176,6 +185,8 @@ def load(root, config_path):
     for key in ['target', 'bundle_id', 'url_scheme']:
         if not re.fullmatch(r'[A-Za-z][A-Za-z0-9_.-]*', config[key]):
             raise ValueError(f'Invalid {key}')
+    if short_developer_links_supported(config) and config['url_scheme'].lower() == 'mzappfoundation':
+        raise ValueError('url_scheme must identify this app; the shared mzappfoundation scheme cannot choose an installed app')
     within(root, config['project'])
     # Administrative secrets must never enter a source-generation manifest.
     for key in config.get('providers', {}):
@@ -185,7 +196,7 @@ def load(root, config_path):
     public_key = config.get('providers', {}).get('revenuecat_public_key')
     if public_key and not public_key.startswith('appl_'):
         raise ValueError('RevenueCat configuration requires an Apple public SDK key')
-    if 'package_path' not in config and not re.fullmatch(r'\d+\.\d+\.\d+', config.get('package_version', '0.5.0')):
+    if 'package_path' not in config and not re.fullmatch(r'\d+\.\d+\.\d+', config.get('package_version', '0.5.1')):
         raise ValueError('package_version must be an exact semantic version')
     if config.get('developer_link_host') and not all(re.fullmatch(r'[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?', label)
                                                     for label in config['developer_link_host'].split('.')):
@@ -196,7 +207,7 @@ def load(root, config_path):
     if not isinstance(config.get('bug_reporting', False), bool):
         raise ValueError('bug_reporting must be a boolean')
     if config.get('bug_reporting'):
-        if 'package_path' not in config and tuple(map(int, config.get('package_version', '0.5.0').split('.'))) < (0, 3, 0):
+        if 'package_path' not in config and tuple(map(int, config.get('package_version', '0.5.1').split('.'))) < (0, 3, 0):
             raise ValueError('Bug reporting requires MZAppFoundation 0.3.0 or later')
         if config['platform'] != 'iOS':
             raise ValueError('Bug reporting in 0.3.0 requires iOS; keep the standard console on other platforms')
@@ -238,7 +249,7 @@ def bootstrap(config):
     analytics = str(config.get('analytics_enabled', True)).lower()
     diagnostics = str(config.get('diagnostics_enabled', True)).lower()
     modern = developer_settings_supported(config)
-    host = ',\n            developerLinkHost: ' + swift_literal(config.get('developer_link_host', config['bundle_id'])) if modern else ''
+    host = ',\n            developerLinkHost: ' + swift_literal(config.get('developer_link_host', config['bundle_id'])) if modern and not short_developer_links_supported(config) else ''
     if modern:
         device_bootstrap = independent_device_bootstrap(config)
     else:
@@ -258,7 +269,8 @@ def bootstrap(config):
     reporting = ''
     if reporting_enabled(config):
         prefix = swift_literal(config.get('report_archive_prefix', 'bug-report'))
-        reporting = f'    #if os(iOS)\n    static let reporting = DeveloperReporting(archivePrefix: {prefix})\n    #endif\n'
+        context = 'services: services, ' if modern else ''
+        reporting = f'    #if os(iOS)\n    static let reporting = DeveloperReporting({context}archivePrefix: {prefix})\n    #endif\n'
     provider_imports = 'import MZAppFoundationLive\n#if os(iOS)\nimport MZAppFoundationFirebase\n#endif'
     if modern:
         provider_imports = '\n'.join('import ' + product for product in provider_products(config) if product != 'MZAppFoundation')
@@ -313,6 +325,7 @@ def configure_plist(path, config):
     values.update(SAFETY)
     if reporting_enabled(config): values.setdefault('NSMicrophoneUsageDescription', microphone_description(config))
     entries = values.setdefault('CFBundleURLTypes', [])
+    remove_shared_scheme(entries, config)
     for scheme in url_schemes(config):
         if not any(scheme in item.get('CFBundleURLSchemes', []) for item in entries):
             entries.append({'CFBundleURLSchemes': [scheme]})
@@ -327,7 +340,7 @@ def mutate_xcodegen(root, config):
     local_name = config['target'] + 'Local'
     spec.setdefault('configs', {'Debug': 'debug', 'Release': 'release'}).setdefault('Internal', 'release')
     package = {'path': config['package_path']} if config.get('package_path') else {
-        'url': 'git@github.com:matteozajac/MZAppFoundation.git', 'version': config.get('package_version', '0.5.0')}
+        'url': 'git@github.com:matteozajac/MZAppFoundation.git', 'version': config.get('package_version', '0.5.1')}
     spec.setdefault('packages', {})['MZAppFoundation'] = package
     base_dependencies = [d for d in target.get('dependencies', []) if d.get('package') != 'MZAppFoundation' and d.get('product', d.get('package')) not in VENDOR_PRODUCTS]
     source = '.mzappfoundation/Generated'
@@ -353,6 +366,7 @@ def mutate_xcodegen(root, config):
         scene['UIApplicationSupportsMultipleScenes'] = True
         scene.setdefault('UIApplicationPreferredDefaultSceneSessionRole', 'UIWindowSceneSessionRoleApplication')
     urls = props.setdefault('CFBundleURLTypes', [])
+    remove_shared_scheme(urls, config)
     for scheme in url_schemes(config):
         if not any(scheme in item.get('CFBundleURLSchemes', []) for item in urls):
             urls.append({'CFBundleURLSchemes': [scheme]})

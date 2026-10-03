@@ -34,8 +34,7 @@ import MZAppFoundationFirebase
         let configuration = AppConfiguration(bundleIdentifier: Bundle.main.bundleIdentifier ?? "sample",
                                              urlScheme: "mzsample", environment: environment,
                                              version: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0",
-                                             build: Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "0",
-                                             developerLinkHost: "sample")
+                                             build: Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "0")
         let schema = TelemetrySchema(events: ["sample_action": ["count"]])
         #if MZ_LOCAL || targetEnvironment(simulator)
         let mock = MockPurchases(offers: [PurchaseOffer(id: "demo/lifetime", offeringID: "demo", productID: "demo.premium",

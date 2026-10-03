@@ -1,7 +1,8 @@
 import Foundation
 
-/// One URL contract for every app and platform. Hosts identify individual apps.
+/// One short URL contract for every platform: `<app-scheme>://developer/enable` or `/disable`.
 public enum DeveloperDeepLink {
+    /// The former shared scheme is reserved and no longer accepted. Register the app's unique scheme.
     public static let scheme = "mzappfoundation"
 
     public enum Action: String, Sendable { case enable, disable }
@@ -10,36 +11,46 @@ public enum DeveloperDeepLink {
     }
     public enum RejectionReason: String, Sendable {
         case malformedURL = "Malformed URL"
-        case invalidConfiguration = "Invalid expected host or app scheme"
+        case invalidConfiguration = "Invalid app URL scheme"
         case unsupportedScheme = "Unrecognized URL scheme"
         case credentials = "Credentials are not allowed"
         case port = "Ports are not allowed"
         case query = "Query parameters are not allowed"
         case fragment = "Fragments are not allowed"
         case encodedComponents = "Encoded host or route is not allowed"
-        case unexpectedHost = "URL belongs to another app host"
+        case unexpectedHost = "Expected the developer host"
         case unsupportedRoute = "Unsupported developer route"
     }
 
-    public static func url(for action: Action, host: String, scheme: String = scheme) -> URL? {
-        guard validHost(host), validScheme(scheme) else { return nil }
+    public static func url(for action: Action, scheme: String) -> URL? {
+        guard validScheme(scheme) else { return nil }
         var parts = URLComponents()
-        parts.scheme = scheme
-        parts.host = host.lowercased()
-        parts.path = "/developer/" + action.rawValue
+        parts.scheme = scheme.lowercased()
+        parts.host = "developer"
+        parts.path = "/" + action.rawValue
         return parts.url
     }
 
+    /// Source-compatible with 0.5.0. App identity is now supplied by the scheme; the host is unused.
+    public static func url(for action: Action, host: String, scheme: String = scheme) -> URL? {
+        url(for: action, scheme: scheme)
+    }
+
+    public static func action(for url: URL, scheme: String) -> Action? {
+        inspect(url.absoluteString, scheme: scheme).action
+    }
+
+    /// Source-compatible with 0.5.0. Supply the app-specific scheme through `legacyScheme`.
     public static func action(for url: URL, host: String, legacyScheme: String? = nil) -> Action? {
         inspect(url.absoluteString, host: host, legacyScheme: legacyScheme).action
     }
 
     /// Dry-run only. The result never copies input text, so rejected URLs cannot leak credentials.
-    public static func inspect(_ raw: String, host: String, legacyScheme: String? = nil) -> DeveloperDeepLinkInspection {
+    public static func inspect(_ raw: String, scheme: String) -> DeveloperDeepLinkInspection {
         func reject(_ reason: RejectionReason) -> DeveloperDeepLinkInspection {
             .init(action: nil, format: nil, rejectionReason: reason)
         }
-        guard validHost(host), legacyScheme.map(validScheme) != false else { return reject(.invalidConfiguration) }
+        guard validScheme(scheme) else { return reject(.invalidConfiguration) }
         guard !raw.isEmpty, raw.utf8.count <= 4_096,
               !raw.unicodeScalars.contains(where: { CharacterSet.whitespacesAndNewlines.contains($0) || CharacterSet.controlCharacters.contains($0) }),
               let parts = URLComponents(string: raw), parts.url != nil, parts.scheme != nil else { return reject(.malformedURL) }
@@ -47,42 +58,26 @@ public enum DeveloperDeepLink {
         guard parts.port == nil else { return reject(.port) }
         guard parts.query == nil else { return reject(.query) }
         guard parts.fragment == nil else { return reject(.fragment) }
-        let isSharedScheme = parts.scheme?.lowercased() == scheme
-        let isAppScheme = legacyScheme != nil && parts.scheme?.lowercased() == legacyScheme?.lowercased()
-        guard isSharedScheme || isAppScheme else { return reject(.unsupportedScheme) }
+        guard parts.scheme?.lowercased() == scheme.lowercased() else { return reject(.unsupportedScheme) }
         guard !(parts.percentEncodedHost?.contains("%") ?? false), !parts.percentEncodedPath.contains("%") else {
             return reject(.encodedComponents)
         }
-        let route: String
-        let format: Format
-        if parts.percentEncodedHost?.lowercased() == host.lowercased() {
-            route = parts.percentEncodedPath
-            format = isSharedScheme ? .shared : .appSpecific
-        } else if !isSharedScheme, isAppScheme, parts.percentEncodedHost?.lowercased() == "developer" {
-        // Transitional compatibility for existing <app-scheme>://developer/enable links.
-            route = "/developer" + parts.percentEncodedPath
-            format = .legacy
-        } else { return reject(.unexpectedHost) }
-        switch route {
-        case "/developer/enable": return .init(action: .enable, format: format, rejectionReason: nil)
-        case "/developer/disable": return .init(action: .disable, format: format, rejectionReason: nil)
+        guard parts.percentEncodedHost?.lowercased() == "developer" else { return reject(.unexpectedHost) }
+        switch parts.percentEncodedPath {
+        case "/enable": return .init(action: .enable, format: .appSpecific, rejectionReason: nil)
+        case "/disable": return .init(action: .disable, format: .appSpecific, rejectionReason: nil)
         default: return reject(.unsupportedRoute)
         }
     }
 
-    private static func validHost(_ host: String) -> Bool {
-        func alphanumeric(_ character: UInt8) -> Bool {
-            (65...90).contains(character) || (97...122).contains(character) || (48...57).contains(character)
-        }
-        return !host.isEmpty && host.utf8.count <= 253 && host.split(separator: ".", omittingEmptySubsequences: false).allSatisfy { label in
-            guard let first = label.utf8.first, let last = label.utf8.last,
-                  label.utf8.count <= 63, alphanumeric(first), alphanumeric(last) else { return false }
-            return label.utf8.allSatisfy { alphanumeric($0) || $0 == 45 }
-        }
+    /// Source-compatible with 0.5.0. Long URLs with an app or bundle-ID host are no longer accepted.
+    public static func inspect(_ raw: String, host: String, legacyScheme: String? = nil) -> DeveloperDeepLinkInspection {
+        inspect(raw, scheme: legacyScheme ?? scheme)
     }
 
     private static func validScheme(_ scheme: String) -> Bool {
-        guard let first = scheme.utf8.first, (65...90).contains(first) || (97...122).contains(first) else { return false }
+        guard scheme.lowercased() != self.scheme,
+              let first = scheme.utf8.first, (65...90).contains(first) || (97...122).contains(first) else { return false }
         return scheme.utf8.allSatisfy {
             (65...90).contains($0) || (97...122).contains($0) || (48...57).contains($0) || [43, 45, 46].contains($0)
         }

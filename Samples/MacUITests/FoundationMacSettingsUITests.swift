@@ -8,7 +8,7 @@ import XCTest
         app.launch()
         app.activate()
 
-        app.typeKey("d", modifierFlags: [.command, .option])
+        app.typeKey("d", modifierFlags: [.control, .command, .option])
         let settings = app.windows["mzappfoundation.settings"]
         XCTAssertTrue(settings.waitForExistence(timeout: 10), app.debugDescription)
         let settingsWindow = settings
@@ -20,14 +20,14 @@ import XCTest
         XCTAssertTrue(valueRow(app, label: "Runtime", value: "SDK not linked").exists)
         retainScreenshot(app, name: "macOS native settings and missing Firebase")
 
-        app.typeKey("l", modifierFlags: [.command, .option])
+        app.typeKey("d", modifierFlags: [.command])
         let console = app.windows["Developer Console"]
         XCTAssertTrue(console.waitForExistence(timeout: 10), app.debugDescription)
         XCTAssertTrue(containingText(app, "The latest 500 local log messages.").exists)
         XCTAssertTrue(containingText(app, "developer_console_opened").waitForExistence(timeout: 10), app.debugDescription)
         retainScreenshot(app, name: "macOS native Pulse console")
 
-        app.typeKey("d", modifierFlags: [.command, .option])
+        app.typeKey("d", modifierFlags: [.control, .command, .option])
         let disable = settingsWindow.descendants(matching: .any)["Disable developer options"].firstMatch
         for _ in 0..<8 {
             if disable.isHittable { break }
@@ -52,7 +52,7 @@ import XCTest
             XCTAssertFalse(app.menuItems["Developer Console"].exists)
             app.typeKey(XCUIKeyboardKey.escape.rawValue, modifierFlags: [])
         }
-        app.typeKey("d", modifierFlags: [.command, .option])
+        app.typeKey("d", modifierFlags: [.control, .command, .option])
         app.typeKey("l", modifierFlags: [.command, .option])
         XCTAssertFalse(settings.exists)
         XCTAssertFalse(console.exists)

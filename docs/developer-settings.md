@@ -1,25 +1,36 @@
 # Foundation developer settings
 
-Version **0.5.0** supplies a protected **App Foundation** entry with separate provider, build, startup, telemetry, export, access, and QA pages. iOS uses a navigation stack in a sheet; macOS and visionOS use a dedicated window with a sidebar. An **Only show provider issues** filter shows providers and app-owned services with warning/error findings. Disabling or expiring developer access removes the entry and dismisses open foundation content, including custom destinations.
+Version **0.5.1** supplies a protected **App Foundation** entry with separate provider, build, startup, telemetry, export, access, keyboard help, and QA pages. iOS uses a navigation stack in a sheet; macOS and visionOS use a dedicated window with a sidebar. An **Only show provider issues** filter shows providers and app-owned services with warning/error findings. Disabling or expiring developer access removes the entry and dismisses open foundation content, including custom destinations.
 
-These developer settings and independent provider products are first published in 0.5.0. Other apps retain their current integrations until individually upgraded. The developer UI remains in English; no localization work is included. See [0.5.0 release notes](release-0.5.0.md).
+Developer settings and independent provider products were introduced in 0.5.0. Version 0.5.1 adds shared keyboard help, Command–D console access, presentation above existing iOS sheets/alerts, and short app-specific developer links. Other apps retain their current integrations until individually upgraded. The developer UI remains in English. See [0.5.0 release notes](release-0.5.0.md) for the earlier provider/settings release.
 
 ## Add the component
 
 The local and compatibility compositions re-export the UI module. The separate `MZAppFoundationUI` product, also available from `Packages/Core`, depends only on the SDK-free core.
 
+For iOS screen recording and ZIP reports, enable `bug_reporting: true` in setup configuration and use the generated app-lifetime `MZBootstrap.reporting`. Supply the same instance to the settings pages and primary-window modifier. The reporting-aware Pulse entry opens the console with its Ladybug report action; recording settings expose the saved preference, capture status and retry action.
+
 ```swift
 import MZAppFoundationLocal
 
 Form {
+    #if os(iOS)
+    FoundationSettingsLink(
+        services: services,
+        pages: FoundationDeveloperTools.pages(services: services, reporting: MZBootstrap.reporting)
+    )
+    #else
     FoundationSettingsLink(
         services: services,
         pages: FoundationDeveloperTools.pages(services: services)
     )
+    #endif
 }
 ```
 
-Keep `.appDeveloperTools(services.developerOptions)` on the primary app window for incoming URLs and console access. On macOS and visionOS, automatic presentation requires the matching scene beside the app's primary `WindowGroup`:
+Keep `.appDeveloperTools(services.developerOptions, reporting: MZBootstrap.reporting)` on the primary iOS app window for incoming URLs, shake/Command–D console access and recording lifecycle. The console uses a separate window in the originating scene, so it can appear above an existing sheet or alert. Closing it restores the original window and preserves the app's previous presentation. For manual composition, create one `DeveloperReporting(services: services)` beside the shared services instead of using generated bootstrap. The host must provide `NSMicrophoneUsageDescription` for voice narration. See [bug reporting](bug-reporting.md) for capture, sharing and permission behavior.
+
+Reporting is optional and iOS-only. Apps retaining console-only behavior use `FoundationDeveloperTools.pages(services:)` and `.appDeveloperTools(services.developerOptions)` on every supported platform. On macOS and visionOS, automatic presentation requires the matching scene beside the app's primary `WindowGroup`:
 
 ```swift
 #if os(macOS) || os(visionOS)
@@ -33,11 +44,42 @@ FoundationSettingsScene(
 #endif
 ```
 
-The macOS Developer menu opens settings with **Command–Option–D** and the console with **Command–Option–L**. Settings windows do not launch automatically or restore after relaunch. Register `DeveloperConsoleScene(options:)` separately when using the console window. On macOS, the package presents a native searchable view of the latest 500 local Pulse log messages; Pulse's public `ConsoleView` is unavailable there. On iOS and visionOS, the composed console page uses PulseUI.
+The macOS Developer menu opens the console with **Command–D** or its **Option–Command–L** alias. **Control–Option–Command–D** opens App Foundation settings; adding Control avoids the system's Option–Command–D Dock shortcut. The Help menu includes **Keyboard Shortcuts**. Settings and help windows do not launch automatically or restore after relaunch. Register `DeveloperConsoleScene(options:)` separately when using the console window. On macOS, the package presents a native searchable view of the latest 500 local Pulse log messages; Pulse's public `ConsoleView` is unavailable there. On iOS and visionOS, the composed console page uses PulseUI.
 
 Use `presentation: .sheet` on `FoundationSettingsLink` to opt into sheet presentation on macOS/visionOS without registering a settings scene. iOS always uses a sheet. `FoundationSettingsView(services:pages:)` is available for app-owned presentation. Multi-window apps should pick their primary presentation owner.
 
 Opening a page or capturing a snapshot performs passive inspection. It does not initialize an SDK, request customer information/offerings, start recording or network capture, purchase, or restore. The provider pages expose separate, explicit manual actions where an adapter supplies them.
+
+## Keyboard help and app shortcuts
+
+`FoundationKeyboardShortcutsLink(options:sections:)` adds a **Keyboard Shortcuts** entry to any app settings `List` or `Form`. It remains available with developer mode off; protected developer shortcuts are marked inactive. The App Foundation navigation also contains the same help page. The foundation supplies the help UI, accessible key names, and built-in shortcut catalog; apps inject their feature descriptions through `FoundationKeyboardShortcutSection` and `FoundationKeyboardShortcut`.
+
+```swift
+let previousPage = FoundationKeyboardShortcut(
+    id: "reader.previous", title: "Previous page", key: .leftArrow, modifiers: []
+)
+let readerShortcuts = [
+    FoundationKeyboardShortcutSection(id: "reader", title: "Reading", shortcuts: [
+        previousPage,
+        .init(id: "reader.next", title: "Next page", key: .rightArrow, modifiers: [])
+    ])
+]
+
+Form {
+    FoundationKeyboardShortcutsLink(options: services.developerOptions, sections: readerShortcuts)
+    FoundationSettingsLink(services: services, keyboardShortcutSections: readerShortcuts)
+}
+
+// The app installs the action using the same shortcut definition as its help entry.
+Button("Previous page", action: goToPreviousPage)
+    .keyboardShortcut(previousPage.shortcut)
+```
+
+Help entries describe bindings; injecting a section does not install feature actions. The app owns reader actions and their availability. Keep shortcut/section IDs stable and unique; foundation entries win when an injected ID repeats, and empty sections are omitted. Hold Command on iPad or visionOS to view the system's shortcuts for the current screen.
+
+`FoundationSettingsLink`, `FoundationSettingsView`, and `FoundationSettingsScene` accept `keyboardShortcutSections:`. Pass the same app sections to each presentation owner. On macOS/visionOS, `FoundationSettingsScene` also registers the help window; `FoundationKeyboardShortcutsScene(options:sections:)` can be registered independently when the app only needs help. Use `presentation: .sheet` on the help link to avoid a separate window, or embed `FoundationKeyboardShortcutsView(options:sections:)` in app-owned navigation.
+
+Command–D requires developer mode and opens the same console as shake or `requestConsole()`. It never enables developer mode. On iOS, `.appDeveloperTools` installs the keyboard and shake responder; on macOS, register `FoundationSettingsCommands` along with the console scene. Use `FoundationKeyboardShortcutCatalog` when referring to package-owned bindings.
 
 ## Optional SDK products
 
@@ -163,7 +205,7 @@ let pages = [
 
 Pass the same pages to the link and registered settings scene. The foundation gates access and navigation; the app remains responsible for any operation inside its page. `FoundationDeveloperTools.pages` optionally consolidates Pulse and, on iOS with a supplied `DeveloperReporting`, recording settings into this navigation without adding those dependencies to the SDK-free UI product.
 
-## Shared developer access and links
+## Developer access and app links
 
 `DeveloperOptions.preferenceKey` is `mzappfoundation.developer.enabled` on every supported platform. Its spelling is shared; its value lives in the supplied app defaults store. Apple app sandboxes do not synchronize a value merely because the key has the same name.
 
@@ -171,21 +213,16 @@ Migration checks `<bundleIdentifier>.developer.enabled` and optional `legacyPref
 
 `setEnabled` and enable/disable links save a choice. `enableUntilAppCloses()` and `enable(for:)` replace saved access with **false for the next launch**, then enable only this process/session. This also overrides development defaults after relaunch. Timed access uses a monotonic deadline; its date is display-only. Expiry revokes capture, dismisses foundation content, and is refreshed when the app becomes active. The UI offers session, 15-minute, 1-hour, persistent, and disable choices. Temporary access never changes purchase access or telemetry preferences.
 
-The shared URL contract is:
+The URL contract uses the app's registered unique scheme:
 
 ```text
-mzappfoundation://<app-host>/developer/enable
-mzappfoundation://<app-host>/developer/disable
+myapp://developer/enable
+myapp://developer/disable
 ```
 
-`AppConfiguration.developerLinkHost` defaults to the bundle identifier. Choose one stable app host across platforms and register `mzappfoundation` in `CFBundleURLTypes`; the links page checks the actual bundle registration. Multiple apps registering the same custom scheme have undefined OS app selection. Different hosts cannot remove that routing ambiguity, although the parser rejects another app's host. Prefer the same standardized route through the app's unique scheme:
+Register the app's `AppConfiguration.urlScheme` in `CFBundleURLTypes`; the links page checks the actual bundle registration. URLs contain no bundle identifier. Generate them with `DeveloperDeepLink.url(for: .enable, scheme: configuration.urlScheme)` and inspect them with `DeveloperDeepLink.inspect(input, scheme: configuration.urlScheme)`. Only the exact `developer` host and `/enable` or `/disable` route are accepted for that app's scheme.
 
-```text
-myapp://myapp/developer/enable
-myapp://myapp/developer/disable
-```
-
-Generate it with `DeveloperDeepLink.url(for:host:scheme:)`. Existing `<app-scheme>://developer/enable` and `/disable` remain accepted during migration. [Apple custom-scheme routing](https://developer.apple.com/documentation/xcode/defining-a-custom-url-scheme-for-your-app)
+Version 0.5.1 removes the shared `mzappfoundation` enable link and its registration from current setup. Apple states that the target app is undefined when multiple apps register the same scheme; it provides no app-selection guarantee. A bundle-ID host cannot make that scheme choose the intended app. Current routing rejects both shared-scheme URLs and the former long app/bundle-ID-host routes. The older host parameters remain source-compatible but do not affect current URLs. [Apple custom-scheme routing](https://developer.apple.com/documentation/xcode/defining-a-custom-url-scheme-for-your-app)
 
 The links page provides copy/share actions and an enable-link QR code, plus `DeveloperDeepLink.inspect` as a dry run with safe acceptance/rejection reasons. Inspection neither opens a URL nor changes access and never exports pasted text. Credentials, ports, queries, fragments, encoded host/path alternatives, wrong hosts, and unsupported routes are rejected.
 
@@ -197,8 +234,8 @@ The QA page builds a **separate simulated composition** for missing configuratio
 
 ## Setup and verification
 
-Setup defaults to **0.5.0**. For 0.5.0+ or a current local checkout, it selects independent products only for configured providers, registers both schemes, preserves unrelated URL types, and installs the build metadata phase. `package_path` remains available for local development. Explicitly pinned 0.3.1 integrations retain compatible umbrella generation and do not receive new APIs until upgraded.
+Setup defaults to **0.5.1**. For 0.5.1+ or a current local checkout, it registers only the app's unique scheme and removes earlier shared-scheme entries while preserving unrelated URL types. Independent products and the build metadata phase were introduced in 0.5.0; products are selected only for configured providers. `package_path` remains available for local development. Explicitly pinned older integrations retain compatible generation and do not receive newer APIs until upgraded.
 
-Safe metadata fields include `developer_link_host`, `revenuecat_project_name`, `revenuecat_project_id`, `revenuecat_app_id`, `firebase_project_name`, and `sentry_project_id`, alongside `sentry_org` / `sentry_project`. Client configuration belongs to the target app. Administrative credentials are never generated into the app or diagnostics.
+Safe metadata fields include `revenuecat_project_name`, `revenuecat_project_id`, `revenuecat_app_id`, `firebase_project_name`, and `sentry_project_id`, alongside `sentry_org` / `sentry_project`. Client configuration belongs to the target app. Administrative credentials are never generated into the app or diagnostics.
 
 The package supports iOS 26, visionOS 26, and macOS 15. It uses system text sizes, selectable values, accessible status labels, compact navigation, and desktop/spatial sidebars. watchOS/tvOS support is not added. Automated builds/tests are separate from physical-device acceptance, backend ingestion, purchase/restore, symbol uploads, archive/signing, and app migrations. See [the dated validation record](developer-settings-validation.md) for current evidence and outstanding checks.

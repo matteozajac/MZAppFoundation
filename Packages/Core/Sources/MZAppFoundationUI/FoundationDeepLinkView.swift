@@ -11,23 +11,19 @@ struct FoundationDeepLinkView: View {
     var body: some View {
         List {
             Section {
-                DiagnosticValueRow("App host", value: services.developerOptions.linkHost)
-                DiagnosticValueRow("Shared scheme registered", value: registered ? "Yes" : "No · register mzappfoundation")
-                Text("The shared scheme can open any installed app that registers it. Prefer this app's unique scheme when several apps are installed.")
+                DiagnosticValueRow("App URL scheme", value: services.configuration.urlScheme)
+                DiagnosticValueRow("App scheme registered", value: registered ? "Yes" : "No · register this app's URL scheme")
+                Text("These links change developer access for this app. After enabling access, open the console from Developer settings, by shaking a supported device, or with ⌘D on a keyboard.")
                     .font(.caption).foregroundStyle(.secondary)
             }
             if let link = appLink(.enable) { linkSection("Enable this app", url: link, showQR: true) }
             if let link = appLink(.disable) { linkSection("Disable this app", url: link, showQR: false) }
-            if let shared = DeveloperDeepLink.url(for: .enable, host: services.developerOptions.linkHost) {
-                linkSection("Shared enable link", url: shared, showQR: false)
-            }
             Section {
                 TextField("Paste a developer link", text: $input, axis: .vertical)
                     .autocorrectionDisabled()
                     .accessibilityIdentifier("mz.foundation.link.input")
                 Button("Inspect without opening") {
-                    inspection = DeveloperDeepLink.inspect(input, host: services.developerOptions.linkHost,
-                                                           legacyScheme: services.configuration.urlScheme)
+                    inspection = DeveloperDeepLink.inspect(input, scheme: services.configuration.urlScheme)
                 }
                 .accessibilityIdentifier("mz.foundation.link.inspect")
                 if let inspection {
@@ -44,11 +40,11 @@ struct FoundationDeepLinkView: View {
     }
 
     private func appLink(_ action: DeveloperDeepLink.Action) -> URL? {
-        DeveloperDeepLink.url(for: action, host: services.developerOptions.linkHost, scheme: services.configuration.urlScheme)
+        DeveloperDeepLink.url(for: action, scheme: services.configuration.urlScheme)
     }
     private var registered: Bool {
         let entries = bundle.object(forInfoDictionaryKey: "CFBundleURLTypes") as? [[String: Any]] ?? []
-        return entries.contains { ($0["CFBundleURLSchemes"] as? [String] ?? []).contains { $0.lowercased() == DeveloperDeepLink.scheme } }
+        return entries.contains { ($0["CFBundleURLSchemes"] as? [String] ?? []).contains { $0.lowercased() == services.configuration.urlScheme.lowercased() } }
     }
     private func linkSection(_ title: String, url: URL, showQR: Bool) -> some View {
         Section(title) {

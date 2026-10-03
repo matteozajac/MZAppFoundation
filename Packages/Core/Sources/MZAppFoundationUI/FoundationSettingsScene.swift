@@ -8,15 +8,18 @@ public struct FoundationSettingsScene: Scene {
     public static let id = "mzappfoundation.settings"
     private let services: AppServices
     private let pages: [FoundationDeveloperPage]
+    private let keyboardShortcutSections: [FoundationKeyboardShortcutSection]
 
-    public init(services: AppServices, pages: [FoundationDeveloperPage] = []) {
+    public init(services: AppServices, pages: [FoundationDeveloperPage] = [],
+                keyboardShortcutSections: [FoundationKeyboardShortcutSection] = []) {
         self.services = services; self.pages = pages
+        self.keyboardShortcutSections = keyboardShortcutSections
     }
 
     public var body: some Scene {
         #if os(macOS)
         Window("App Foundation", id: Self.id) {
-            FoundationSettingsView(services: services, pages: pages)
+            FoundationSettingsView(services: services, pages: pages, keyboardShortcutSections: keyboardShortcutSections)
                 .frame(minWidth: 720, minHeight: 480)
         }
         .defaultSize(width: 960, height: 740)
@@ -25,13 +28,16 @@ public struct FoundationSettingsScene: Scene {
         .commandsRemoved()
         #else
         WindowGroup("App Foundation", id: Self.id) {
-            FoundationSettingsView(services: services, pages: pages)
+            FoundationSettingsView(services: services, pages: pages, keyboardShortcutSections: keyboardShortcutSections)
         }
         .defaultSize(width: 960, height: 740)
         #if os(visionOS)
         .defaultLaunchBehavior(.suppressed)
         .restorationBehavior(.disabled)
         #endif
+        #endif
+        #if os(macOS) || os(visionOS)
+        FoundationKeyboardShortcutsScene(options: services.developerOptions, sections: keyboardShortcutSections)
         #endif
     }
 }
@@ -46,15 +52,32 @@ public struct FoundationSettingsCommands: Commands {
     public var body: some Commands {
         CommandMenu("Developer") {
             if services.developerOptions.isEnabled {
-                Button("App Foundation") { openWindow(id: FoundationSettingsScene.id) }
-                    .keyboardShortcut("d", modifiers: [.command, .option])
+                Button("App Foundation", action: openSettings)
+                    .keyboardShortcut(FoundationKeyboardShortcutCatalog.developerSettings.shortcut)
                 Button("Developer Console") {
-                    services.developerOptions.requestConsole()
-                    openWindow(id: DeveloperOptions.consoleSceneID)
+                    openConsole()
                 }
+                    .keyboardShortcut(FoundationKeyboardShortcutCatalog.developerConsole.shortcut)
+                Button("Developer Console (Alternate)", action: openConsole)
                     .keyboardShortcut("l", modifiers: [.command, .option])
             }
         }
+        CommandGroup(after: .help) {
+            Button("Keyboard Shortcuts") { openWindow(id: FoundationKeyboardShortcutsScene.id) }
+        }
+    }
+
+    private func openConsole() {
+        services.developerOptions.refreshExpiration()
+        guard services.developerOptions.isEnabled else { return }
+        services.developerOptions.requestConsole()
+        openWindow(id: DeveloperOptions.consoleSceneID)
+    }
+
+    private func openSettings() {
+        services.developerOptions.refreshExpiration()
+        guard services.developerOptions.isEnabled else { return }
+        openWindow(id: FoundationSettingsScene.id)
     }
 }
 #endif

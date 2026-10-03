@@ -20,5 +20,5 @@ import SwiftUI
 enum FoundationSettingsRoute: Hashable {
     case provider(FoundationProvider)
     case section(String), page(String)
-    case build, startup, telemetry, timeline, links, export, qa, access
+    case build, startup, telemetry, timeline, links, export, qa, access, shortcuts
 }

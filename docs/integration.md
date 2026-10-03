@@ -2,7 +2,7 @@
 
 Requires Swift 6.2+, Xcode with iOS/visionOS 26 SDKs, and private GitHub access. Version 0.5.0 also supports macOS 15. Feature code uses the SDK-free `MZAppFoundation` core module; bootstrap and settings choose composition/UI products. Vendor SDK modules are never re-exported. SDK versions are pinned centrally.
 
-The 0.5.0 products are `MZAppFoundation` (Pulse local composition), `MZAppFoundationUI` (core-only UI), and independent `MZAppFoundationRevenueCat`, `MZAppFoundationSentry`, and `MZAppFoundationFirebaseAnalytics` adapters. Existing `MZAppFoundationLive` (local + RevenueCat + Sentry) and `MZAppFoundationFirebase` (Live + iOS Firebase Analytics) remain compatibility umbrellas. These developer settings and independent adapters are first published in 0.5.0, which is the setup default.
+The products are `MZAppFoundation` (Pulse local composition), `MZAppFoundationUI` (core-only UI), and independent `MZAppFoundationRevenueCat`, `MZAppFoundationSentry`, and `MZAppFoundationFirebaseAnalytics` adapters. Existing `MZAppFoundationLive` (local + RevenueCat + Sentry) and `MZAppFoundationFirebase` (Live + iOS Firebase Analytics) remain compatibility umbrellas. Developer settings and independent adapters were introduced in 0.5.0. Setup now defaults to 0.5.1, which adds keyboard help, Command–D console access, console presentation above existing iOS sheets/alerts, and short app-specific developer links.
 
 ## Feature code
 
@@ -25,6 +25,8 @@ App events conform to `AnalyticsEvent` and are registered in `TelemetrySchema`. 
 
 Run setup against `.mzappfoundation/config.json` (copy `config.example.json` and replace identifiers). Bootstrap/entrypoint imports `MZAppFoundationLocal` and selected adapter modules. Feature files import just `MZAppFoundation`. Modern setup selects SDK products only for supplied provider configuration; older pinned integrations retain their compatible umbrella composition.
 
+For the iOS reporting path below, set `bug_reporting: true` in setup configuration. Setup generates one `MZBootstrap.reporting` instance and verifies the host's `NSMicrophoneUsageDescription`. Pass that instance to the modifier and reporting-aware settings pages to get the Ladybug action, recent screen activity and report ZIP. Without reporting configuration, keep `.appDeveloperTools(services.developerOptions)` and `FoundationDeveloperTools.pages(services:)` for the compatible console-only interface. Reporting capture is available on iOS only.
+
 ```swift
 import MZAppFoundation
 import MZAppFoundationLocal
@@ -35,7 +37,11 @@ import SwiftUI
     var body: some Scene {
         WindowGroup {
             ContentView(services: services)
+                #if os(iOS)
+                .appDeveloperTools(services.developerOptions, reporting: MZBootstrap.reporting)
+                #else
                 .appDeveloperTools(services.developerOptions)
+                #endif
         }
         #if os(visionOS) || os(macOS)
         DeveloperConsoleScene(options: services.developerOptions)
@@ -53,9 +59,11 @@ import SwiftUI
 
 Use exactly one services composition per app process. Identical repeated live bootstrap returns the original object; change delivery through `services.telemetry.updatePreferences`, not by creating another composition. Persist delivery preferences in app-owned settings when needed and supply them at launch. Diagnostic revocation cancels the Sentry transport before closing the SDK, then removes its dedicated cache. Local logs remain available independently.
 
-Register the developer tools modifier on the principal app scene. Multi-window apps should choose their active primary scene for presentation rather than sharing sheet state across all window roots. iOS uses a scoped responder for shake; apps with custom responders or text input should verify their responder-chain behavior. An explicit Settings button calls `requestConsole()` as a fallback. visionOS uses one console scene identifier and opens it on first launch when enabled; closing the console does not reopen it on ordinary scene updates.
+Register the developer tools modifier on the principal app scene. Multi-window apps should choose their active primary scene for presentation. On iOS, a scoped responder handles shake and Command–D, including while an app sheet is open. The console appears in a separate window in that scene; closing it restores the original window with its sheet or alert still presented. Apps with custom responders or text input should verify their responder-chain behavior. An explicit Settings button can call `requestConsole()`. visionOS uses one console scene identifier and opens it on first launch when enabled; closing the console does not reopen it on ordinary scene updates.
 
-Add `FoundationSettingsLink(services:pages:)` to the app's `List` or `Form`. Automatic presentation is an iOS sheet and a macOS/visionOS window with sidebar navigation; the latter requires `FoundationSettingsScene`. Pass the same app-owned pages to the link and scene. `presentation: .sheet` opts into sheet presentation without a settings scene. macOS `FoundationSettingsCommands` supplies Command–Option–D for settings and Command–Option–L for the console. The settings entry, content, and custom destinations are gated by developer access; disabling/expiry dismisses presented content. Read [developer settings](developer-settings.md) for the complete contract and examples.
+Add `FoundationSettingsLink(services:pages:)` to the app's `List` or `Form`. On iOS with reporting enabled, use `FoundationDeveloperTools.pages(services: services, reporting: MZBootstrap.reporting)` so the Pulse console entry opens the same reporter. Automatic presentation is an iOS sheet and a macOS/visionOS window with sidebar navigation; the latter requires `FoundationSettingsScene`. Pass the same app-owned pages to the link and scene. `presentation: .sheet` opts into sheet presentation without a settings scene. macOS `FoundationSettingsCommands` supplies Command–D for the console, Option–Command–L as an alias, and Control–Option–Command–D for settings. The settings entry, content, and custom destinations are gated by developer access; disabling/expiry dismisses presented content.
+
+Add `FoundationKeyboardShortcutsLink(options: services.developerOptions, sections: appShortcuts)` to ordinary settings for help that remains readable with developer mode off. The package supplies its built-in developer shortcuts and the shared list UI; apps inject `FoundationKeyboardShortcutSection` values describing reader or other feature shortcuts. Bind feature actions with each `FoundationKeyboardShortcut.shortcut` so help and actions use the same definition. Help descriptions alone do not install those actions. Pass these sections through `keyboardShortcutSections:` to `FoundationSettingsLink`, `FoundationSettingsView`, and `FoundationSettingsScene`. The settings scene includes the help window on macOS/visionOS; `FoundationKeyboardShortcutsScene(options:sections:)` can also be registered independently, or the help link can use `presentation: .sheet`. Read [developer settings](developer-settings.md) for the full API and example.
 
 ## Independent adapter composition
 
@@ -110,7 +118,9 @@ RevenueCat uses `RevenueCatPurchases(key:configuration:)` plus `RevenueCatProvid
 
 Explicit developer enable/disable preferences override defaults. `<scheme>://developer/enable` and `/disable` reject credentials, ports, queries, fragments and encoded alternate paths. Developer mode does not alter remote delivery or purchase access.
 
-Version 0.5.0 standardizes `DeveloperOptions.preferenceKey` as `mzappfoundation.developer.enabled`, scoped to each supplied defaults store. It adds `mzappfoundation://<app-host>/developer/enable` and `/disable`; unique app-scheme aliases avoid ambiguous OS targeting when multiple apps register the shared scheme. Session/timed access stores false for the next launch, while saved choices persist. These choices never enable remote delivery or bypass purchase verification.
+Version 0.5.0 standardized `DeveloperOptions.preferenceKey` as `mzappfoundation.developer.enabled`, scoped to each supplied defaults store. Version 0.5.1 uses only `myapp://developer/enable` and `/disable`, where `myapp` is the app's registered unique URL scheme. Generate links with `DeveloperDeepLink.url(for:scheme:)`; no bundle identifier is included. The shared `mzappfoundation` scheme and old long app-host routes are rejected. Apple documents that the target app is undefined when multiple apps register one scheme, so current setup removes that shared registration. [Apple custom-scheme routing](https://developer.apple.com/documentation/xcode/defining-a-custom-url-scheme-for-your-app)
+
+Session/timed access stores false for the next launch, while saved choices persist. These choices never enable remote delivery or bypass purchase verification. Command–D and shake open the console only while developer mode is enabled.
 
 Heavy SDKs may be resolved/downloaded by Xcode because they exist in the package manifest. Local targets must not compile/link them. Test domain modules against the standalone `Packages/Core` package from a pinned checkout to avoid even dependency resolution. Do not use app-hosted unit tests when claiming an SDK-free test process.
 
@@ -126,9 +136,9 @@ python3 -m venv .venv
 
 XcodeGen projects require `xcodegen`. Native Xcode projects require Ruby and `bundle install --gemfile scripts/Gemfile`; set `RUBY` when system Ruby differs. Native setup preserves source/resource/framework references and adds a local target. Review custom target dependencies, inherited xcconfigs, script phases, extensions and vendor calls: verification intentionally rejects unresolved direct SDK imports. Run setup from the project root; nested project specs should use project-root-relative paths.
 
-Provider fields: `revenuecat_public_key`, `sentry_dsn`, `google_service_info` (app-relative plist path), `sentry_org`, `sentry_project`. Modern integrations also accept `developer_link_host`, `revenuecat_project_name`, `revenuecat_project_id`, `revenuecat_app_id`, `firebase_project_name`, and `sentry_project_id`. Metadata alone does not cause SDK linkage or prove remote provisioning. Never store administrative tokens in this file. `products` contains only confirmed product definitions; provisioning is handled by the skill and records exact remote readbacks. No product catalog means no RevenueCat offering creation.
+Provider fields: `revenuecat_public_key`, `sentry_dsn`, `google_service_info` (app-relative plist path), `sentry_org`, `sentry_project`. Modern integrations also accept `revenuecat_project_name`, `revenuecat_project_id`, `revenuecat_app_id`, `firebase_project_name`, and `sentry_project_id`. Metadata alone does not cause SDK linkage or prove remote provisioning. Never store administrative tokens in this file. `products` contains only confirmed product definitions; provisioning is handled by the skill and records exact remote readbacks. No product catalog means no RevenueCat offering creation.
 
-Setup defaults to `package_version: "0.5.0"`; use `package_path` when developing against a local checkout. An explicitly pinned 0.3.1 integration remains compatible and does not receive new settings/build APIs. Setup for 0.5.0+ supports iOS, visionOS, and macOS, generates independent provider composition, and copies the build metadata generator into the app. Review and validate the target app; setup does not publish a package, distribute the app, or migrate another repository.
+Setup defaults to `package_version: "0.5.1"`; use `package_path` when developing against a local checkout. Explicitly pinned older integrations retain compatible generation and do not receive newer APIs until upgraded. Setup for 0.5.0+ supports iOS, visionOS, and macOS, generates independent provider composition, and copies the build metadata generator into the app. For 0.5.1+ or a current local checkout, it registers only the app's unique scheme and removes earlier shared-scheme entries while preserving unrelated URL types. Review and validate the target app; setup does not publish a package, distribute the app, or migrate another repository.
 
 ## Build and diagnostics evidence
 

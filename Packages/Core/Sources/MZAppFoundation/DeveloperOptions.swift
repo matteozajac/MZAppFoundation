@@ -27,6 +27,7 @@ private struct DeveloperCaptureState: Sendable {
         }
     }
     private let scheme: String
+    /// Retained for source compatibility. Developer links use only the app's URL scheme.
     public let linkHost: String
     private let defaults: UserDefaults
     private var didLaunch = false
@@ -121,7 +122,7 @@ private struct DeveloperCaptureState: Sendable {
         onActivity?("developer.access.expired")
     }
     @discardableResult public func handle(_ url: URL) -> Bool {
-        guard let action = DeveloperDeepLink.action(for: url, host: linkHost, legacyScheme: scheme) else {
+        guard let action = DeveloperDeepLink.action(for: url, scheme: scheme) else {
             onActivity?("developer.link.rejected")
             return false
         }

@@ -6,12 +6,13 @@ import UIKit
 struct FoundationReportingView: View {
     let options: DeveloperOptions
     let reporting: DeveloperReporting
+    var showsRecordingSettings = true
     @State private var anchor = FoundationReportingAnchor()
 
     var body: some View {
         List {
             Section {
-                Button("Open bug reporter", systemImage: "ladybug") {
+                Button(showsRecordingSettings ? "Open bug reporter" : "Open Pulse console", systemImage: "ladybug") {
                     guard options.isEnabled, let window = anchor.window else { return }
                     reporting.present(from: window)
                 }
@@ -19,7 +20,9 @@ struct FoundationReportingView: View {
                 Text("Capture a report with optional logs, recording and a redacted foundation diagnostics snapshot.")
                     .font(.caption).foregroundStyle(.secondary)
             }
-            DeveloperReportingSettings(reporting: reporting)
+            if showsRecordingSettings {
+                DeveloperReportingSettings(reporting: reporting)
+            }
         }
         .background(FoundationReportingWindow { anchor.window = $0 }.allowsHitTesting(false))
     }

@@ -9,7 +9,8 @@ let package = Package(
     targets: [
         .target(name: "MZAppFoundation"),
         .target(name: "MZAppFoundationUI", dependencies: ["MZAppFoundation"]),
-        .testTarget(name: "MZAppFoundationTests", dependencies: ["MZAppFoundation"])
+        .testTarget(name: "MZAppFoundationTests", dependencies: ["MZAppFoundation"]),
+        .testTarget(name: "MZAppFoundationUITests", dependencies: ["MZAppFoundationUI"])
     ],
     swiftLanguageModes: [.v6]
 )

@@ -28,15 +28,19 @@ public final class BugReportCoordinator {
     private var developerMode = false
     private var active = false
     private var busy = false
-    private var draft: ReportDraft?
+    private var finishing = false
+    private(set) var draft: ReportDraft?
     private var capturedReport: BugReport?
     private var capturedDiagnostics = ReportDiagnosticsCapture.notProvided
     private var frozen: RollingVideoBuffer?
     private var preparation: Task<Void, Never>?
+    private var sharingTask: Task<Void, Never>?
+    private var presentationID: UUID?
     private weak var window: UIWindow?
     private weak var presenter: UIViewController?
     private weak var consoleHost: UIViewController?
     private weak var formHost: UIViewController?
+    private var overlay: DeveloperOverlayWindow?
     private var movingFromConsole = false
 
     public init(
@@ -71,6 +75,7 @@ public final class BugReportCoordinator {
     public func update(developerMode: Bool, isActive: Bool) {
         self.developerMode = developerMode
         active = isActive
+        if !developerMode { dismiss() }
         updateRecording()
     }
 
@@ -79,18 +84,19 @@ public final class BugReportCoordinator {
     public func retryRecording() { recording?.retry() }
 
     public func presentConsole<Content: View>(from window: UIWindow, @ViewBuilder content: () -> Content) {
-        guard !busy, window.windowScene?.activationState == .foregroundActive,
-              let root = window.rootViewController else { return }
-        var presenter = root
-        while let presented = presenter.presentedViewController, !presented.isBeingDismissed { presenter = presented }
-        guard !presenter.isBeingPresented, !presenter.isBeingDismissed else { return }
+        guard !busy, let overlay = DeveloperOverlayWindow(from: window) else { return }
+        self.overlay = overlay
+        let presenter = overlay.presenter
         busy = true
+        presentationID = UUID()
         self.window = window
         self.presenter = presenter
         capturedReport = .make(metadata: metadata())
         capturedDiagnostics = .capture(diagnostics)
         frozen = recording?.freeze()
-        let shell = ConsoleShell(coordinator: self, content: content(), report: { [weak self] in self?.beginReport() })
+        let shell = ConsoleShell(coordinator: self, content: content(),
+                                 close: { [weak self] in self?.dismiss() },
+                                 report: { [weak self] in self?.beginReport() })
         let host = DismissAwareHost(rootView: shell)
         host.didDismiss = { [weak self] in
             guard let self, !movingFromConsole else { return }
@@ -100,11 +106,17 @@ public final class BugReportCoordinator {
         presenter.present(host, animated: !UIAccessibility.isReduceMotionEnabled)
     }
 
+    public func dismiss() {
+        guard let overlay else { return }
+        overlay.presenter.dismiss(animated: false)
+        finish()
+    }
+
     private func updateRecording() {
         recording?.update(enabled: developerMode && recordingEnabled, active: active)
     }
 
-    private func beginReport() {
+    func beginReport() {
         guard !movingFromConsole, let consoleHost, let window, let files else {
             presentationError = storageError
             return
@@ -116,14 +128,16 @@ public final class BugReportCoordinator {
             presentationError = error.localizedDescription
             return
         }
+        let presentationID = self.presentationID
         movingFromConsole = true
         consoleHost.dismiss(animated: !UIAccessibility.isReduceMotionEnabled) { [weak self] in
             guard let self else { return }
             Task { @MainActor in
                 await RenderFrame.wait()
+                guard self.presentationID == presentationID, self.overlay != nil else { return }
                 // Release ReplayKit before the form can start microphone capture.
                 await self.recording?.waitUntilSettled()
-                guard let draft = self.draft else { return }
+                guard self.presentationID == presentationID, self.overlay != nil, let draft = self.draft else { return }
                 draft.capture(window: window)
                 self.showForm(draft)
                 let buffer = self.frozen
@@ -150,11 +164,13 @@ public final class BugReportCoordinator {
 
     private func retryScreenshot() {
         guard let formHost, let window, let draft else { return }
+        let presentationID = self.presentationID
         formHost.dismiss(animated: false) { [weak self] in
             Task { @MainActor in
                 await RenderFrame.wait()
+                guard let self, self.presentationID == presentationID, self.draft === draft, self.overlay != nil else { return }
                 draft.capture(window: window)
-                self?.showForm(draft)
+                self.showForm(draft)
             }
         }
     }
@@ -170,9 +186,10 @@ public final class BugReportCoordinator {
     private func share() {
         guard let draft, draft.canShare, !draft.sharing, let formHost else { return }
         draft.sharing = true
-        Task { [weak self] in
+        sharingTask = Task { [weak self] in
             do {
                 let items = try await draft.shareItems()
+                guard !Task.isCancelled, self?.draft === draft, self?.formHost === formHost else { return }
                 let activity = UIActivityViewController(activityItems: items, applicationActivities: nil)
                 let title = draft.report.title.trimmingCharacters(in: .whitespacesAndNewlines)
                 activity.setValue(title.isEmpty ? BugReportStrings.text("bug_report") : title, forKey: "subject")
@@ -180,6 +197,7 @@ public final class BugReportCoordinator {
                 activity.popoverPresentationController?.sourceRect = CGRect(x: formHost.view.bounds.midX, y: formHost.view.bounds.maxY - 1, width: 1, height: 1)
                 activity.completionWithItemsHandler = { [weak self, weak activity] _, completed, _, error in
                     Task { @MainActor in
+                        guard self?.draft === draft, self?.formHost === formHost else { return }
                         draft.sharing = false
                         if let error { draft.shareError = error.localizedDescription }
                         if completed {
@@ -194,6 +212,7 @@ public final class BugReportCoordinator {
                 }
                 formHost.present(activity, animated: true)
             } catch {
+                guard self?.draft === draft else { return }
                 draft.sharing = false
                 draft.shareError = error.localizedDescription
             }
@@ -206,25 +225,38 @@ public final class BugReportCoordinator {
     }
 
     private func finish() {
+        guard busy, !finishing else { return }
+        finishing = true
+        presentationID = nil
+        overlay?.close()
+        overlay = nil
+        consoleHost = nil
+        formHost = nil
+        presenter = nil
         let pendingDraft = draft
         pendingDraft?.voiceNote.cancel()
         let draftDirectory = draft?.directory
         let buffer = frozen
         let work = preparation
+        let sharing = sharingTask
+        sharing?.cancel()
         draft = nil
         capturedReport = nil
         capturedDiagnostics = .notProvided
         frozen = nil
         preparation = nil
+        sharingTask = nil
         movingFromConsole = false
         Task { [weak self] in
             await work?.value
+            await sharing?.value
             await pendingDraft?.waitForExports()
             _ = try? await buffer?.snapshot()
             guard let self else { return }
             if let draftDirectory { files?.remove(draftDirectory) }
             if let directory = buffer?.directory { files?.remove(directory) }
             busy = false
+            finishing = false
             recording?.resume()
         }
     }
@@ -233,12 +265,17 @@ public final class BugReportCoordinator {
 private struct ConsoleShell<Content: View>: View {
     @Bindable var coordinator: BugReportCoordinator
     let content: Content
+    let close: () -> Void
     let report: () -> Void
 
     var body: some View {
         NavigationStack {
             content
                 .toolbar {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button(BugReportStrings.text("bug_done"), action: close)
+                            .accessibilityIdentifier("bugReporter.closeConsole")
+                    }
                     ToolbarItem(placement: .topBarTrailing) {
                         Button(BugReportStrings.text("bug_share_bug"), systemImage: "ladybug", action: report)
                             .labelStyle(.iconOnly)

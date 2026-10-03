@@ -6,6 +6,7 @@ public struct FoundationSettingsView: View {
     private let services: AppServices
     private let bundle: Bundle
     private let pages: [FoundationDeveloperPage]
+    private let keyboardShortcutSections: [FoundationKeyboardShortcutSection]
     @State private var selection: FoundationSettingsRoute?
     @State private var issuesOnly = false
     @Environment(\.dismiss) private var dismiss
@@ -14,8 +15,10 @@ public struct FoundationSettingsView: View {
     @Environment(\.dismissWindow) private var dismissWindow
     #endif
 
-    public init(services: AppServices, bundle: Bundle = .main, pages: [FoundationDeveloperPage] = []) {
+    public init(services: AppServices, bundle: Bundle = .main, pages: [FoundationDeveloperPage] = [],
+                keyboardShortcutSections: [FoundationKeyboardShortcutSection] = []) {
         self.services = services; self.bundle = bundle
+        self.keyboardShortcutSections = keyboardShortcutSections
         var ids = Set<String>()
         self.pages = pages.filter { ids.insert($0.id).inserted }
     }
@@ -113,6 +116,7 @@ public struct FoundationSettingsView: View {
                 }
             }
             Section("Developer access") {
+                route("Keyboard Shortcuts", image: "keyboard", value: .shortcuts)
                 route("Links and QR codes", image: "link", value: .links)
                 route("Access duration", image: "timer", value: .access)
                 if services.configuration.environment == .local {
@@ -164,6 +168,7 @@ public struct FoundationSettingsView: View {
             case .export: FoundationExportView(services: services)
             case .qa: FoundationQAView(services: services)
             case .access: FoundationAccessView(options: services.developerOptions)
+            case .shortcuts: FoundationKeyboardShortcutsView(options: services.developerOptions, sections: keyboardShortcutSections)
             }
         }
     }

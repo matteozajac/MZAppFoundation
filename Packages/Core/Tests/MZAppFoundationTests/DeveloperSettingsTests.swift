@@ -32,24 +32,27 @@ import Testing
 
     @Test func canonicalLinksRoundTripAndDisableRevokesCaptureAndConsole() throws {
         let options = DeveloperOptions(configuration: configuration(), defaults: defaults())
-        let enable = try #require(DeveloperDeepLink.url(for: .enable, host: "first"))
-        #expect(enable.absoluteString == "mzappfoundation://first/developer/enable")
+        let enable = try #require(DeveloperDeepLink.url(for: .enable, scheme: "legacy"))
+        #expect(enable.absoluteString == "legacy://developer/enable")
         #expect(options.handle(enable))
         #expect(options.activationSource == .link)
         #expect(options.handle(try #require(DeveloperDeepLink.url(for: .enable, host: "first", scheme: "legacy"))))
         options.requestConsole()
         #expect(options.isEnabled && options.consoleRequested && options.allowsNetworkCapture)
-        #expect(options.handle(try #require(DeveloperDeepLink.url(for: .disable, host: "first"))))
+        #expect(options.handle(try #require(DeveloperDeepLink.url(for: .disable, scheme: "legacy"))))
         #expect(!options.isEnabled && !options.consoleRequested && !options.allowsNetworkCapture)
     }
 
     @Test(arguments: [
-        "mzappfoundation://second/developer/enable", "mzappfoundation://first/developer/enable?x=1",
-        "mzappfoundation://first/developer/enable#fragment", "mzappfoundation://user@first/developer/enable",
-        "mzappfoundation://first:80/developer/enable", "mzappfoundation://first/developer/%65nable",
-        "mzappfoundation://first/developer/enable/", "mzappfoundation://%66irst/developer/enable",
-        "mzappfoundation://first/developer/../enable", "mzappfoundation://first/enable",
-        "legacy://%64eveloper/enable"
+        "mzappfoundation://developer/enable", "mzappfoundation://first/developer/enable",
+        "legacy://com.example.first/developer/enable", "legacy://first/developer/enable",
+        "other://developer/enable", "legacy://developer/enable?x=1",
+        "legacy://developer/enable#fragment", "legacy://user@developer/enable",
+        "legacy://developer:80/enable", "legacy://developer/%65nable",
+        "legacy://developer/enable/", "legacy://%64eveloper/enable",
+        "legacy://developer/../enable", "legacy://developer/developer/enable",
+        "legacy://developer//enable", "legacy://developer/Enable", "legacy://developer/",
+        "legacy:/developer/enable"
     ])
     func malformedCanonicalLinksCannotEnableTools(link: String) throws {
         let options = DeveloperOptions(configuration: configuration(), defaults: defaults())
@@ -57,10 +60,25 @@ import Testing
         #expect(!options.isEnabled)
     }
 
-    @Test func invalidHostsNeverProduceDeveloperLinks() {
-        for host in ["", "first/other", "first?key=value", "first@other", "first:80", "first_app", ".", "-first", "first-", "first..other"] {
-            #expect(DeveloperDeepLink.url(for: .enable, host: host) == nil)
+    @Test func invalidAndSharedSchemesNeverProduceDeveloperLinks() {
+        for scheme in ["", "app/other", "app?key=value", "app@other", "app:80", "app_name", ".", "-app", "1app", "mzappfoundation", "MZAPPFOUNDATION"] {
+            #expect(DeveloperDeepLink.url(for: .enable, scheme: scheme) == nil)
+            #expect(DeveloperDeepLink.inspect("legacy://developer/enable", scheme: scheme).rejectionReason == .invalidConfiguration)
         }
+    }
+
+    @Test func appIdentityComesOnlyFromItsScheme() throws {
+        let link = try #require(DeveloperDeepLink.url(for: .enable, scheme: "BEDTIMESTORIES"))
+        #expect(link.absoluteString == "bedtimestories://developer/enable")
+        #expect(DeveloperDeepLink.inspect("BEDTIMESTORIES://DEVELOPER/enable", scheme: "bedtimestories").accepted)
+        let compatibilityLink = DeveloperDeepLink.url(for: .enable, host: "com.example.first", scheme: "bedtimestories")
+        #expect(compatibilityLink == link)
+        #expect(DeveloperDeepLink.url(for: .enable, host: "com.example.first") == nil)
+        #expect(DeveloperDeepLink.inspect(link.absoluteString, host: "unused", legacyScheme: "bedtimestories").accepted)
+        let first = DeveloperOptions(configuration: .init(bundleIdentifier: "com.example.first", urlScheme: "bedtimestories", environment: .production), defaults: defaults())
+        let second = DeveloperOptions(configuration: .init(bundleIdentifier: "com.example.second", urlScheme: "otherapp", environment: .production), defaults: defaults())
+        #expect(first.handle(link))
+        #expect(!second.handle(link) && !second.isEnabled)
     }
 
     @Test func defaultsRemainIsolatedBetweenAppStores() {
@@ -72,16 +90,19 @@ import Testing
     @Test func inspectionReportsSafeReasonsAndNeverMutatesAccess() {
         let store = defaults()
         let options = DeveloperOptions(configuration: configuration(), defaults: store)
-        let canonical = DeveloperDeepLink.inspect("mzappfoundation://first/developer/enable", host: "first", legacyScheme: "legacy")
-        #expect(canonical.accepted && canonical.action == .enable && canonical.format == .shared)
-        let alias = DeveloperDeepLink.inspect("legacy://first/developer/disable", host: "first", legacyScheme: "legacy")
-        #expect(alias.accepted && alias.format == .appSpecific)
-        let legacy = DeveloperDeepLink.inspect("legacy://developer/enable", host: "first", legacyScheme: "legacy")
-        #expect(legacy.accepted && legacy.format == .legacy)
-        let rejected = DeveloperDeepLink.inspect("mzappfoundation://secret:password@first/developer/enable", host: "first")
+        let canonical = DeveloperDeepLink.inspect("legacy://developer/enable", scheme: "legacy")
+        #expect(canonical.accepted && canonical.action == .enable && canonical.format == .appSpecific)
+        let disabled = DeveloperDeepLink.inspect("legacy://developer/disable", scheme: "legacy")
+        #expect(disabled.accepted && disabled.action == .disable && disabled.format == .appSpecific)
+        let rejected = DeveloperDeepLink.inspect("legacy://secret:password@developer/enable", scheme: "legacy")
         #expect(!rejected.accepted && rejected.rejectionReason == .credentials)
         #expect(!String(describing: rejected).contains("secret"))
         #expect(!options.isEnabled && store.object(forKey: DeveloperOptions.preferenceKey) == nil)
+    }
+
+    @Test(arguments: ["", "\nlegacy://developer/enable", "legacy://developer/enable\u{0000}", "legacy://developer/enable bad", String(repeating: "a", count: 4_097)])
+    func inspectionRejectsMalformedRawInput(link: String) {
+        #expect(DeveloperDeepLink.inspect(link, scheme: "legacy").rejectionReason == .malformedURL)
     }
 
     @Test func temporaryAccessReplacesPersistenceAndEndsOnNextLaunch() {

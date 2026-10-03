@@ -1,6 +1,23 @@
 import XCTest
 
 @MainActor final class FoundationSettingsUITests: XCTestCase {
+    func testKeyboardShortcutHelpStaysAvailableWithoutDeveloperMode() {
+        let app = XCUIApplication()
+        app.launchArguments = ["--ui-testing"]
+        app.launch()
+        let mode = app.switches["Developer mode"]
+        for _ in 0..<5 { if mode.isHittable { break }; app.swipeUp() }
+        XCTAssertTrue(mode.waitForExistence(timeout: 5))
+        if mode.value as? String == "1" { mode.switches.firstMatch.tap() }
+        let help = app.buttons["mz.foundation.shortcuts.link"]
+        help.tap()
+        XCTAssertTrue(app.staticTexts["Developer Console"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["mz.foundation.shortcuts.developerDisabled"].exists || app.otherElements["mz.foundation.shortcuts.developerDisabled"].exists)
+        retainScreenshot(app, name: "Keyboard shortcuts with developer mode off")
+        app.buttons["Done"].tap()
+        XCTAssertTrue(help.waitForExistence(timeout: 5))
+        XCTAssertFalse(app.buttons["mz.foundation.settings.link"].exists)
+    }
     func testExpandedDiagnosticsAndIssueFilter() {
         let app = XCUIApplication()
         openSettings(app, arguments: ["--foundation-expanded-demo"])
@@ -69,6 +86,30 @@ import XCTest
         retainScreenshot(app, name: "Bug report diagnostics attachment")
     }
 
+    func testPulseConsoleUsesSharedBugReporter() {
+        let app = XCUIApplication()
+        openSettings(app)
+        tapRow(app, title: "Pulse console")
+        let open = app.buttons["mz.foundation.report.open"]
+        XCTAssertTrue(open.waitForExistence(timeout: 5))
+        open.tap()
+        let ladybug = app.buttons["bugReporter.shareBug"]
+        XCTAssertTrue(ladybug.waitForExistence(timeout: 5))
+        retainScreenshot(app, name: "Pulse console with Ladybug reporting")
+        ladybug.tap()
+        let share = app.buttons["bugReporter.share"]
+        XCTAssertTrue(share.waitForExistence(timeout: 5))
+        let title = app.textFields["bugReporter.title"]
+        title.tap()
+        title.typeText("Report from Foundation console")
+        XCTAssertTrue(share.isEnabled)
+        app.buttons["Cancel"].tap()
+        app.buttons["Discard report"].tap()
+        XCTAssertTrue(open.waitForExistence(timeout: 5))
+        open.tap()
+        XCTAssertTrue(ladybug.waitForExistence(timeout: 5))
+    }
+
     private func openSettings(_ app: XCUIApplication, arguments: [String] = []) {
         app.launchArguments = ["--ui-testing", "--foundation-settings-demo"] + arguments
         app.launch()
@@ -76,7 +117,7 @@ import XCTest
         for _ in 0..<5 { if link.isHittable { break }; app.swipeUp() }
         XCTAssertTrue(link.waitForExistence(timeout: 10))
         link.tap()
-        XCTAssertTrue(app.staticTexts["0.5.0"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["0.5.1"].waitForExistence(timeout: 5))
     }
 
     private func tapRow(_ app: XCUIApplication, title: String) {
@@ -94,7 +135,7 @@ import XCTest
         let link = app.buttons["mz.foundation.settings.link"]
         XCTAssertTrue(link.waitForExistence(timeout: 10))
         link.tap()
-        XCTAssertTrue(app.staticTexts["0.5.0"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["0.5.1"].waitForExistence(timeout: 5))
         retainScreenshot(app, name: "Foundation overview")
         let firebase = app.buttons["mz.foundation.provider.firebase"]
         if !firebase.isHittable { app.swipeUp() }
@@ -130,9 +171,9 @@ import XCTest
         mode.switches.firstMatch.tap()
         XCTAssertEqual(mode.value as? String, "1")
         XCTAssertTrue(link.waitForExistence(timeout: 5))
-        XCTAssertFalse(app.staticTexts["0.5.0"].exists)
+        XCTAssertFalse(app.staticTexts["0.5.1"].exists)
         link.tap()
-        XCTAssertTrue(app.staticTexts["0.5.0"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["0.5.1"].waitForExistence(timeout: 5))
     }
 
     private func retainScreenshot(_ app: XCUIApplication, name: String) {

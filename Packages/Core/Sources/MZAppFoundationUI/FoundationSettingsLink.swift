@@ -5,6 +5,7 @@ import SwiftUI
 public struct FoundationSettingsLink: View {
     private let services: AppServices
     private let pages: [FoundationDeveloperPage]
+    private let keyboardShortcutSections: [FoundationKeyboardShortcutSection]
     private let presentation: FoundationSettingsPresentation
     @State private var isPresented = false
     #if os(macOS) || os(visionOS)
@@ -12,8 +13,10 @@ public struct FoundationSettingsLink: View {
     #endif
 
     public init(services: AppServices, pages: [FoundationDeveloperPage] = [],
+                keyboardShortcutSections: [FoundationKeyboardShortcutSection] = [],
                 presentation: FoundationSettingsPresentation = .automatic) {
         self.services = services; self.pages = pages; self.presentation = presentation
+        self.keyboardShortcutSections = keyboardShortcutSections
     }
 
     public var body: some View {
@@ -32,7 +35,9 @@ public struct FoundationSettingsLink: View {
                 .accessibilityIdentifier("mz.foundation.settings.link")
             }
         }
-        .sheet(isPresented: $isPresented) { FoundationSettingsView(services: services, pages: pages) }
+        .sheet(isPresented: $isPresented) {
+            FoundationSettingsView(services: services, pages: pages, keyboardShortcutSections: keyboardShortcutSections)
+        }
         .onChange(of: services.developerOptions.isEnabled) { _, enabled in
             if !enabled { isPresented = false }
         }

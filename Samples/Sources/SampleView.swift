@@ -59,6 +59,7 @@ struct SampleView: View {
                     }.disabled(busy)
                 }
                 Section("Developer tools") {
+                    FoundationKeyboardShortcutsLink(options: services.developerOptions)
                     Button("Record sample error") {
                         services.logger.error("Sample model loading failed", error: SampleLoadingError(),
                                               category: "model", metadata: ["model_id": .string("sample")])

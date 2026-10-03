@@ -19,9 +19,12 @@ import XCTest
         title.typeText("Cannot save changes")
         XCTAssertTrue(share.isEnabled)
         share.tap()
+        retainScreenshot(app, name: "Native report sharing")
         dismissShareSheet(in: app)
         XCTAssertTrue(share.waitForExistence(timeout: 5))
-        XCTAssertTrue(share.isEnabled)
+        let ready = XCTNSPredicateExpectation(predicate: NSPredicate(format: "enabled == true AND hittable == true"), object: share)
+        XCTAssertEqual(XCTWaiter.wait(for: [ready], timeout: 5), .completed)
+        retainScreenshot(app, name: "Draft after cancelling sharing")
         XCTAssertEqual(title.value as? String, "Cannot save changes")
         app.buttons["Cancel"].tap()
         app.buttons["Discard report"].tap()
@@ -91,6 +94,13 @@ import XCTest
             XCTAssertTrue(close.waitForExistence(timeout: 10), app.debugDescription)
             close.tap()
         }
+    }
+
+    private func retainScreenshot(_ app: XCUIApplication, name: String) {
+        let attachment = XCTAttachment(screenshot: app.screenshot())
+        attachment.name = name
+        attachment.lifetime = .keepAlways
+        add(attachment)
     }
 
 }

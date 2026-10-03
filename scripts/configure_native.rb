@@ -11,9 +11,10 @@ raise 'Target not found' unless target
 local_name = target.name + 'Local'
 local = project.targets.find { |t| t.name == local_name }
 platform = { 'iOS' => :ios, 'visionOS' => :visionos, 'macOS' => :osx }.fetch(config['platform'])
-settings_supported = config.key?('package_path') || (config.fetch('package_version', '0.5.0').split('.').map(&:to_i) <=> [0, 5, 0]) >= 0
+settings_supported = config.key?('package_path') || (config.fetch('package_version', '0.5.1').split('.').map(&:to_i) <=> [0, 5, 0]) >= 0
+short_links_supported = config.key?('package_path') || (config.fetch('package_version', '0.5.1').split('.').map(&:to_i) <=> [0, 5, 1]) >= 0
 url_schemes = [config['url_scheme']]
-url_schemes << 'mzappfoundation' if settings_supported
+url_schemes << 'mzappfoundation' if settings_supported && !short_links_supported
 url_schemes.uniq!
 unless local
   local = project.new_target(:application, local_name, platform, config.fetch('deployment_target', config['platform'] == 'macOS' ? '15.0' : '26.0'))
@@ -53,12 +54,12 @@ unless package
   else
     package = project.new(Xcodeproj::Project::Object::XCRemoteSwiftPackageReference)
     package.repositoryURL = 'git@github.com:matteozajac/MZAppFoundation.git'
-    package.requirement = { 'kind' => 'exactVersion', 'version' => config.fetch('package_version', '0.5.0') }
+    package.requirement = { 'kind' => 'exactVersion', 'version' => config.fetch('package_version', '0.5.1') }
   end
   project.root_object.package_references << package
 end
 if package.isa == 'XCRemoteSwiftPackageReference'
-  package.requirement = { 'kind' => 'exactVersion', 'version' => config.fetch('package_version', '0.5.0') }
+  package.requirement = { 'kind' => 'exactVersion', 'version' => config.fetch('package_version', '0.5.1') }
 end
 group = project.main_group.find_subpath('.mzappfoundation/Generated', true)
 group.set_source_tree('SOURCE_ROOT')
@@ -127,6 +128,10 @@ bootstrap = group.files.find { |f| f.path == 'MZBootstrap.swift' } || group.new_
         plist['NSMicrophoneUsageDescription'] ||= settings['INFOPLIST_KEY_NSMicrophoneUsageDescription'] || config.fetch('microphone_usage_description', 'Record a voice message when you choose to describe a bug.')
       end
       urls = plist['CFBundleURLTypes'] ||= []
+      if short_links_supported
+        urls.each { |entry| entry['CFBundleURLSchemes'] = Array(entry['CFBundleURLSchemes']).reject { |scheme| scheme.downcase == 'mzappfoundation' } }
+        urls.reject! { |entry| entry['CFBundleURLSchemes'].empty? }
+      end
       url_schemes.each do |scheme|
         urls << { 'CFBundleURLSchemes' => [scheme] } unless urls.any? { |u| Array(u['CFBundleURLSchemes']).include?(scheme) }
       end
@@ -152,7 +157,7 @@ bootstrap = group.files.find { |f| f.path == 'MZBootstrap.swift' } || group.new_
     require 'shellwords'
     phase = t.shell_script_build_phases.find { |p| p.name == 'MZ Build Metadata' } || t.new_shell_script_build_phase('MZ Build Metadata')
     script = 'python3 "$SRCROOT/.mzappfoundation/Generated/generate_build_metadata.py" --app-root "$SRCROOT"'
-    script += config['package_path'] ? ' --foundation-root ' + Shellwords.escape(config['package_path']) : ' --foundation-version ' + Shellwords.escape(config.fetch('package_version', '0.5.0'))
+    script += config['package_path'] ? ' --foundation-root ' + Shellwords.escape(config['package_path']) : ' --foundation-version ' + Shellwords.escape(config.fetch('package_version', '0.5.1'))
     phase.shell_script = script + ' --channel "$CONFIGURATION" --stamp-build-time --output "$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH/MZFoundationBuildMetadata.plist"'
     phase.always_out_of_date = '1'
     t.build_configurations.each { |c| c.build_settings['ENABLE_USER_SCRIPT_SANDBOXING'] = 'NO' }

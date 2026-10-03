@@ -52,7 +52,42 @@ class SetupTests(unittest.TestCase):
             properties = yaml.safe_load((root / 'project.yml').read_text())['targets']['Demo']['info']['properties']
             self.assertEqual(properties['CustomSetting'], 'keep')
             schemes = [scheme for entry in properties['CFBundleURLTypes'] for scheme in entry['CFBundleURLSchemes']]
-            self.assertEqual(set(schemes), {'existing', 'demo', 'mzappfoundation'})
+            self.assertEqual(set(schemes), {'existing', 'demo'})
+
+    def test_short_links_remove_shared_registration_and_preserve_app_schemes(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root, config = self.fixture(directory)
+            project = yaml.safe_load((root / 'project.yml').read_text())
+            urls = [{'CFBundleURLName': 'app routes', 'CFBundleURLSchemes': ['existing', 'MZAPPFOUNDATION']},
+                    {'CFBundleURLSchemes': ['mzappfoundation']}]
+            project['targets']['Demo']['info'] = {'path': 'Info.plist', 'properties': {'CFBundleURLTypes': urls}}
+            (root / 'project.yml').write_text(yaml.safe_dump(project))
+            setup.apply(root, config)
+            for target in ('Demo', 'DemoLocal'):
+                entries = yaml.safe_load((root / 'project.yml').read_text())['targets'][target]['info']['properties']['CFBundleURLTypes']
+                self.assertEqual(entries, [{'CFBundleURLName': 'app routes', 'CFBundleURLSchemes': ['existing']},
+                                           {'CFBundleURLSchemes': ['demo']}])
+            setup.configure_plist(root / 'Info.plist', config)
+            import plistlib
+            entries = plistlib.loads((root / 'Info.plist').read_bytes())['CFBundleURLTypes']
+            self.assertEqual([scheme for entry in entries for scheme in entry['CFBundleURLSchemes']], ['existing', 'demo'])
+            self.assertEqual(setup.url_schemes(dict(config, package_version='0.5.1')), ['demo'])
+
+    def test_native_short_links_prune_shared_scheme_from_concrete_plist(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root, config = self.fixture(directory)
+            import plistlib
+            project = yaml.safe_load((root / 'project.yml').read_text())
+            project['targets']['Demo']['info'] = {'path': 'Info.plist'}
+            (root / 'project.yml').write_text(yaml.safe_dump(project))
+            subprocess.run(['xcodegen', 'generate'], cwd=root, check=True, capture_output=True)
+            (root / 'Info.plist').write_bytes(plistlib.dumps({'CFBundleURLTypes': [
+                {'CFBundleURLSchemes': ['existing', 'mzappfoundation']},
+                {'CFBundleURLSchemes': ['MZAPPFOUNDATION']}]}))
+            config.update(project_type='native', project='Demo.xcodeproj')
+            setup.apply(root, config)
+            entries = plistlib.loads((root / 'Info.plist').read_bytes())['CFBundleURLTypes']
+            self.assertEqual([scheme for entry in entries for scheme in entry['CFBundleURLSchemes']], ['existing', 'demo'])
 
     def test_developer_settings_generation_preserves_old_version_compatibility(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -60,7 +95,7 @@ class SetupTests(unittest.TestCase):
             config['developer_link_host'] = 'demo'
             config['providers'] = {'revenuecat_project_name': 'Demo Project', 'sentry_org': 'example', 'sentry_project': 'demo'}
             source = setup.bootstrap(config)
-            self.assertIn('developerLinkHost: "demo"', source)
+            self.assertNotIn('developerLinkHost:', source)
             self.assertIn('revenueCatProject = ProviderProjectIdentity(name: "Demo Project"', source)
             self.assertNotIn('import MZAppFoundationFirebase', source)
             self.assertIn('LocalServices.make', source)
@@ -71,6 +106,9 @@ class SetupTests(unittest.TestCase):
             old['package_version'] = '0.3.1'
             self.assertNotIn('makeRecovering', setup.bootstrap(old))
             self.assertEqual(setup.url_schemes(old), ['demo'])
+            old['package_version'] = '0.5.0'
+            self.assertIn('developerLinkHost: "com.example.demo"', setup.bootstrap(old))
+            self.assertEqual(setup.url_schemes(old), ['demo', 'mzappfoundation'])
 
     def test_default_remote_release_pins_current_version_and_settings_contract(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -78,12 +116,12 @@ class SetupTests(unittest.TestCase):
             config.pop('package_path')
             setup.apply(root, config)
             project = yaml.safe_load((root / 'project.yml').read_text())
-            self.assertEqual(project['packages']['MZAppFoundation']['version'], '0.5.0')
+            self.assertEqual(project['packages']['MZAppFoundation']['version'], '0.5.1')
             self.assertEqual(project['targets']['Demo']['dependencies'][0]['product'], 'MZAppFoundation')
-            self.assertIn('--foundation-version 0.5.0', setup.build_metadata_script(config))
-            self.assertIn('mzappfoundation', setup.url_schemes(config))
+            self.assertIn('--foundation-version 0.5.1', setup.build_metadata_script(config))
+            self.assertEqual(setup.url_schemes(dict(config, package_version='0.5.1')), ['demo'])
             self.assertFalse(setup.developer_settings_supported(dict(config, package_version='0.4.0')))
-            self.assertTrue(setup.developer_settings_supported(dict(config, package_version='0.5.0')))
+            self.assertTrue(setup.developer_settings_supported(dict(config, package_version='0.5.1')))
 
             subprocess.run(['xcodegen', 'generate'], cwd=root, check=True, capture_output=True)
             config.update(project_type='native', project='Demo.xcodeproj')
@@ -92,7 +130,7 @@ class SetupTests(unittest.TestCase):
             result = subprocess.run([ruby, '-rxcodeproj', '-rjson', '-e',
                 'p = Xcodeproj::Project.open(ARGV[0]); puts JSON.generate(p.root_object.package_references.map { |r| r.requirement })',
                 str(root / 'Demo.xcodeproj')], check=True, text=True, capture_output=True)
-            self.assertEqual(json.loads(result.stdout), [{'kind': 'exactVersion', 'version': '0.5.0'}])
+            self.assertEqual(json.loads(result.stdout), [{'kind': 'exactVersion', 'version': '0.5.1'}])
 
     def test_macos_setup_has_native_platforms_and_build_metadata(self):
         with tempfile.TemporaryDirectory() as directory:

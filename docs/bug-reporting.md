@@ -1,10 +1,10 @@
-# Local bug reporting in 0.3.0
+# Local bug reporting
 
 On iOS, Foundation can retain the last 60 seconds of silent app activity and add a Ladybug report action to Pulse. The report form supports a title, a voice message up to five minutes, or both. It includes optional screenshot/video/Pulse logs, app and device metadata, and a native share sheet. ZIP sharing defaults on; cancelling the share sheet keeps the draft, while completing or discarding clears its temporary files.
 
 ## Integrate
 
-Use one `DeveloperReporting` instance per app process, alongside the existing services composition. Register the modifier on the principal app scene; it uses that scene's window for screenshot and presentation. Preserve unrelated URL handlers and scene wiring.
+Use one `DeveloperReporting` instance per app process, alongside the existing services composition. Register the modifier on the principal app scene; it captures that scene’s app window and presents tools in a temporary window above existing sheets and alerts. Dismissing tools restores the original presentation. Command–D and shake use the same path in 0.5.1. Preserve unrelated URL handlers and scene wiring.
 
 ```swift
 import MZAppFoundationLocal
@@ -24,6 +24,8 @@ DeveloperReportingSettings(reporting: AppInfrastructure.reporting)
 The host app must contain a nonempty `NSMicrophoneUsageDescription`, covering bug narration and any other existing microphone use. For setup-managed apps, `bug_reporting: true` generates `MZBootstrap.reporting`, preserves existing purpose text or adds `microphone_usage_description`, and verifies purpose text plus reporting-enabled entrypoint wiring. `report_archive_prefix` defaults to `bug-report`. Reporting is opt-in in setup configuration; configs without it retain the previous bootstrap and console-only interface. The example config enables it for new iOS integrations.
 
 The existing `appDeveloperTools(options)` overload keeps console-only behavior. `DeveloperReporting.recordsRecentActivity` and the settings view expose the persisted screen-recording preference; its initial default is on, subject to developer mode, foreground activity and ReplayKit consent. Microphone recording starts only after the user taps Record and grants permission. Backgrounding/interruption stops voice capture and preserves valid partial audio. It never resumes voice capture automatically.
+
+When composing Foundation settings, pass the same instance to `FoundationDeveloperTools.pages(services: services, reporting: AppInfrastructure.reporting)`. Both the Pulse console page and the bug-reporting page then open the shared console with its Ladybug action. The console page has an Open Pulse console button so the coordinator can freeze recent activity before presenting Pulse and dismiss Pulse before taking the screenshot. `pages(services:)` keeps the console-only integration.
 
 ## Modules and platforms
 
