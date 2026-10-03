@@ -10,9 +10,13 @@ target = project.targets.find { |t| t.name == config.fetch('target') }
 raise 'Target not found' unless target
 local_name = target.name + 'Local'
 local = project.targets.find { |t| t.name == local_name }
-platform = config['platform'] == 'iOS' ? :ios : :visionos
+platform = { 'iOS' => :ios, 'visionOS' => :visionos, 'macOS' => :osx }.fetch(config['platform'])
+settings_supported = config.key?('package_path') || (config.fetch('package_version', '0.5.0').split('.').map(&:to_i) <=> [0, 5, 0]) >= 0
+url_schemes = [config['url_scheme']]
+url_schemes << 'mzappfoundation' if settings_supported
+url_schemes.uniq!
 unless local
-  local = project.new_target(:application, local_name, platform, config.fetch('deployment_target', '26.0'))
+  local = project.new_target(:application, local_name, platform, config.fetch('deployment_target', config['platform'] == 'macOS' ? '15.0' : '26.0'))
   target.build_configurations.each do |original|
     dest = local.add_build_configuration(original.name, original.type)
     dest.build_settings = Marshal.load(Marshal.dump(original.build_settings))
@@ -49,28 +53,44 @@ unless package
   else
     package = project.new(Xcodeproj::Project::Object::XCRemoteSwiftPackageReference)
     package.repositoryURL = 'git@github.com:matteozajac/MZAppFoundation.git'
-    package.requirement = { 'kind' => 'exactVersion', 'version' => config.fetch('package_version', '0.3.1') }
+    package.requirement = { 'kind' => 'exactVersion', 'version' => config.fetch('package_version', '0.5.0') }
   end
   project.root_object.package_references << package
 end
 if package.isa == 'XCRemoteSwiftPackageReference'
-  package.requirement = { 'kind' => 'exactVersion', 'version' => config.fetch('package_version', '0.3.1') }
+  package.requirement = { 'kind' => 'exactVersion', 'version' => config.fetch('package_version', '0.5.0') }
 end
 group = project.main_group.find_subpath('.mzappfoundation/Generated', true)
 group.set_source_tree('SOURCE_ROOT')
 group.path = '.mzappfoundation/Generated'
 bootstrap = group.files.find { |f| f.path == 'MZBootstrap.swift' } || group.new_file('MZBootstrap.swift')
 [target, local].each do |t|
-  name = t == local ? 'MZAppFoundation' : (config['platform'] == 'iOS' ? 'MZAppFoundationFirebase' : 'MZAppFoundationLive')
-  dependency = t.package_product_dependencies.find { |d| d.product_name == name }
-  unless dependency
-  dependency = project.new(Xcodeproj::Project::Object::XCSwiftPackageProductDependency)
-  dependency.package = package if package.isa == 'XCRemoteSwiftPackageReference'
-  dependency.product_name = name
-  t.package_product_dependencies << dependency
-  build_file = project.new(Xcodeproj::Project::Object::PBXBuildFile)
-  build_file.product_ref = dependency
-  t.frameworks_build_phase.files << build_file
+  names = ['MZAppFoundation']
+  if t == target
+    if settings_supported
+      providers = config.fetch('providers', {})
+      names << 'MZAppFoundationRevenueCat' if providers['revenuecat_public_key']
+      names << 'MZAppFoundationSentry' if providers['sentry_dsn']
+      names << 'MZAppFoundationFirebaseAnalytics' if config['platform'] == 'iOS' && providers['google_service_info']
+    else
+      names = [config['platform'] == 'iOS' ? 'MZAppFoundationFirebase' : 'MZAppFoundationLive']
+    end
+  end
+  # Updating a setup replaces compatibility umbrellas with the selected independent products.
+  t.package_product_dependencies.to_a.each do |dependency|
+    next unless dependency.product_name.start_with?('MZAppFoundation') && !names.include?(dependency.product_name)
+    t.frameworks_build_phase.files.to_a.select { |f| f.product_ref == dependency }.each(&:remove_from_project)
+    dependency.remove_from_project
+  end
+  names.each do |name|
+    next if t.package_product_dependencies.any? { |d| d.product_name == name }
+    dependency = project.new(Xcodeproj::Project::Object::XCSwiftPackageProductDependency)
+    dependency.package = package if package.isa == 'XCRemoteSwiftPackageReference'
+    dependency.product_name = name
+    t.package_product_dependencies << dependency
+    build_file = project.new(Xcodeproj::Project::Object::PBXBuildFile)
+    build_file.product_ref = dependency
+    t.frameworks_build_phase.files << build_file
   end
   t.source_build_phase.add_file_reference(bootstrap, true)
   if config.fetch('providers', {})['google_service_info']
@@ -85,7 +105,7 @@ bootstrap = group.files.find { |f| f.path == 'MZBootstrap.swift' } || group.new_
   t.build_configurations.each do |c|
     settings = c.build_settings
     settings['PRODUCT_BUNDLE_IDENTIFIER'] = config['bundle_id']
-    settings['SUPPORTED_PLATFORMS'] = config['platform'] == 'iOS' ? (t == local ? 'iphonesimulator' : 'iphoneos') : (t == local ? 'xrsimulator' : 'xros')
+    settings['SUPPORTED_PLATFORMS'] = { 'iOS' => (t == local ? 'iphonesimulator' : 'iphoneos'), 'visionOS' => (t == local ? 'xrsimulator' : 'xros'), 'macOS' => 'macosx' }.fetch(config['platform'])
     flags = Array(settings['SWIFT_ACTIVE_COMPILATION_CONDITIONS'] || '$(inherited)').flat_map(&:split).reject { |f| ['MZ_LOCAL', 'MZ_INTERNAL'].include?(f) }
     flags << 'MZ_LOCAL' if t == local
     flags << 'MZ_INTERNAL' if c.name == 'Internal'
@@ -107,14 +127,16 @@ bootstrap = group.files.find { |f| f.path == 'MZBootstrap.swift' } || group.new_
         plist['NSMicrophoneUsageDescription'] ||= settings['INFOPLIST_KEY_NSMicrophoneUsageDescription'] || config.fetch('microphone_usage_description', 'Record a voice message when you choose to describe a bug.')
       end
       urls = plist['CFBundleURLTypes'] ||= []
-      urls << { 'CFBundleURLSchemes' => [config['url_scheme']] } unless urls.any? { |u| Array(u['CFBundleURLSchemes']).include?(config['url_scheme']) }
+      url_schemes.each do |scheme|
+        urls << { 'CFBundleURLSchemes' => [scheme] } unless urls.any? { |u| Array(u['CFBundleURLSchemes']).include?(scheme) }
+      end
       %w[FirebaseAutomaticScreenReportingEnabled FIREBASE_ANALYTICS_COLLECTION_ENABLED GOOGLE_ANALYTICS_IDFV_COLLECTION_ENABLED GOOGLE_ANALYTICS_DEFAULT_ALLOW_AD_PERSONALIZATION_SIGNALS].each { |key| plist[key] = false }
       absolute.dirname.mkpath
       Xcodeproj::Plist.write_to_path(plist, absolute.to_s)
     else
       # Generated Info.plist URL array is supplied through a concrete companion plist.
       absolute = root.join('.mzappfoundation/Generated/App-Info.plist')
-      plist = {'CFBundleURLTypes' => [{'CFBundleURLSchemes' => [config['url_scheme']]}]}
+      plist = {'CFBundleURLTypes' => [{'CFBundleURLSchemes' => url_schemes}]}
       if config['bug_reporting'] && config['platform'] == 'iOS'
         plist['NSMicrophoneUsageDescription'] = settings['INFOPLIST_KEY_NSMicrophoneUsageDescription'] || config.fetch('microphone_usage_description', 'Record a voice message when you choose to describe a bug.')
       end
@@ -125,6 +147,15 @@ bootstrap = group.files.find { |f| f.path == 'MZBootstrap.swift' } || group.new_
       settings['INFOPLIST_FILE'] = '.mzappfoundation/Generated/App-Info.plist'
       settings['GENERATE_INFOPLIST_FILE'] = 'YES'
     end
+  end
+  if settings_supported
+    require 'shellwords'
+    phase = t.shell_script_build_phases.find { |p| p.name == 'MZ Build Metadata' } || t.new_shell_script_build_phase('MZ Build Metadata')
+    script = 'python3 "$SRCROOT/.mzappfoundation/Generated/generate_build_metadata.py" --app-root "$SRCROOT"'
+    script += config['package_path'] ? ' --foundation-root ' + Shellwords.escape(config['package_path']) : ' --foundation-version ' + Shellwords.escape(config.fetch('package_version', '0.5.0'))
+    phase.shell_script = script + ' --channel "$CONFIGURATION" --stamp-build-time --output "$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH/MZFoundationBuildMetadata.plist"'
+    phase.always_out_of_date = '1'
+    t.build_configurations.each { |c| c.build_settings['ENABLE_USER_SCRIPT_SANDBOXING'] = 'NO' }
   end
   if t == target && config.fetch('providers', {})['sentry_dsn']
     phase = t.shell_script_build_phases.find { |p| p.name == 'MZ Sentry Symbols' } || t.new_shell_script_build_phase('MZ Sentry Symbols')

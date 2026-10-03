@@ -21,6 +21,7 @@ public final class BugReportCoordinator {
     private let provider: any BugReportAttachmentProvider
     private let archivePrefix: String
     private let metadata: @MainActor () -> [String: String]
+    private let diagnostics: (@MainActor () throws -> Data)?
     private let files: ReportFiles?
     private let storageError: String?
     private let recording: RecordingSession?
@@ -29,6 +30,7 @@ public final class BugReportCoordinator {
     private var busy = false
     private var draft: ReportDraft?
     private var capturedReport: BugReport?
+    private var capturedDiagnostics = ReportDiagnosticsCapture.notProvided
     private var frozen: RollingVideoBuffer?
     private var preparation: Task<Void, Never>?
     private weak var window: UIWindow?
@@ -42,13 +44,15 @@ public final class BugReportCoordinator {
         defaults: UserDefaults = .standard,
         preferenceKey: String = "BugReporter.recordRecentActivity",
         archivePrefix: String = "bug-report",
-        metadata: @escaping @MainActor () -> [String: String] = { [:] }
+        metadata: @escaping @MainActor () -> [String: String] = { [:] },
+        diagnostics: (@MainActor () throws -> Data)? = nil
     ) {
         self.provider = attachmentProvider
         self.archivePrefix = archivePrefix
         self.defaults = defaults
         self.preferenceKey = preferenceKey
         self.metadata = metadata
+        self.diagnostics = diagnostics
         recordingEnabled = defaults.object(forKey: preferenceKey) as? Bool ?? true
         do {
             let files = try ReportFiles()
@@ -84,6 +88,7 @@ public final class BugReportCoordinator {
         self.window = window
         self.presenter = presenter
         capturedReport = .make(metadata: metadata())
+        capturedDiagnostics = .capture(diagnostics)
         frozen = recording?.freeze()
         let shell = ConsoleShell(coordinator: self, content: content(), report: { [weak self] in self?.beginReport() })
         let host = DismissAwareHost(rootView: shell)
@@ -105,7 +110,8 @@ public final class BugReportCoordinator {
             return
         }
         do {
-            draft = ReportDraft(report: capturedReport ?? .make(metadata: metadata()), directory: try files.directory(), provider: provider, archivePrefix: archivePrefix)
+            draft = ReportDraft(report: capturedReport ?? .make(metadata: metadata()), directory: try files.directory(), provider: provider, archivePrefix: archivePrefix,
+                                diagnostics: capturedDiagnostics)
         } catch {
             presentationError = error.localizedDescription
             return
@@ -207,6 +213,7 @@ public final class BugReportCoordinator {
         let work = preparation
         draft = nil
         capturedReport = nil
+        capturedDiagnostics = .notProvided
         frozen = nil
         preparation = nil
         movingFromConsole = false

@@ -18,6 +18,7 @@ import zipfile
 MAX_FILES = 100
 MAX_BYTES = 512 * 1024 * 1024
 MAX_DECODED = 256 * 1024 * 1024
+MAX_DIAGNOSTICS = 1024 * 1024
 TABLES = (
     "ZLOGGERSESSIONENTITY", "ZLOGGERMESSAGEENTITY", "ZNETWORKTASKENTITY",
     "ZNETWORKREQUESTENTITY", "ZNETWORKRESPONSEENTITY",
@@ -146,6 +147,62 @@ def inspect_voice_note(root, report, warnings):
     }
 
 
+def inspect_diagnostics(root, report, warnings):
+    """Read a bounded technical snapshot separately from the bug-report manifest and QA input."""
+    name = 'diagnostics.json'
+    path = root / name
+    declared = name in report.get('attachments', [])
+    status = report.get('attachmentStatus', {}).get('diagnostics')
+    present = path.is_file() and not path.is_symlink()
+    if not declared and not present and status is None:
+        return None
+    result = {'path': str(path), 'available': False, 'formatValid': False, 'backendDeliveryVerified': False}
+    if status == 'included' and not (declared and present):
+        warnings.append('Diagnostics marked included but no declared snapshot exists')
+    elif present and (status != 'included' or not declared):
+        warnings.append('Diagnostics snapshot conflicts with its attachment status or inventory')
+    elif status == 'unavailable':
+        warnings.append('Diagnostics snapshot was unavailable; app/provider runtime state is not evidenced by this report')
+    if not (declared and present and status == 'included'):
+        return result
+    try:
+        if path.stat().st_size > MAX_DIAGNOSTICS:
+            raise ValueError('Diagnostic size limit')
+        def reject_constant(_):
+            raise ValueError('Invalid JSON number')
+        snapshot = json.loads(path.read_text(), parse_constant=reject_constant)
+        if (not isinstance(snapshot, dict) or snapshot.get('format') != 'mzappfoundation-diagnostics'
+                or type(snapshot.get('schemaVersion')) is not int or snapshot['schemaVersion'] != 1):
+            raise ValueError('Unsupported diagnostic format')
+        pending = [(snapshot, 0)]
+        count = 0
+        sensitive = ('token', 'password', 'secret', 'authorization', 'cookie', 'receipt', 'transaction',
+                     'email', 'phone', 'userid', 'prompt', 'transcript', 'payload', 'apikey', 'dsn')
+        while pending:
+            value, depth = pending.pop()
+            count += 1
+            if depth > 16 or count > 20_000:
+                raise ValueError('Diagnostic structure limit')
+            if isinstance(value, dict):
+                if len(value) > 128:
+                    raise ValueError('Diagnostic object limit')
+                for key, child in value.items():
+                    if len(key) > 128 or any(word in key.lower().replace('_', '') for word in sensitive):
+                        raise ValueError('Private diagnostic field')
+                    pending.append((child, depth + 1))
+            elif isinstance(value, list):
+                if len(value) > 1000:
+                    raise ValueError('Diagnostic array limit')
+                pending.extend((child, depth + 1) for child in value)
+            elif isinstance(value, str) and len(value) > 2048:
+                raise ValueError('Diagnostic string limit')
+        result.update(available=True, formatValid=True, schemaVersion=1)
+    except (ValueError, OSError, UnicodeError, RecursionError):
+        # Never echo an arbitrary payload or parser error containing report data.
+        warnings.append('Diagnostics snapshot is malformed, unsupported, private, or exceeds limits; inspect locally before using it')
+    return result
+
+
 def lzfse(data, limit=MAX_DECODED):
     if sys.platform != "darwin":
         raise RuntimeError("Pulse LZFSE decoding requires macOS libcompression; ZIP and notes are still available")
@@ -251,6 +308,7 @@ def inspect(source, output):
     extract(source, output / "attachments")
     root, report, warnings = read_manifest(output / "attachments")
     voice_note = inspect_voice_note(root, report, warnings)
+    diagnostics = inspect_diagnostics(root, report, warnings)
     pulse_results = []
     for name in report.get("attachments", []):
         path = root / name
@@ -268,6 +326,7 @@ def inspect(source, output):
         "files": [{"path": str(p.relative_to(root)), "bytes": p.stat().st_size} for p in sorted(root.rglob("*")) if p.is_file()],
         "pulse": pulse_results, "warnings": warnings,
         "voiceNote": voice_note,
+        "diagnostics": diagnostics,
     }
     write_json(output / "summary.json", summary)
     return summary

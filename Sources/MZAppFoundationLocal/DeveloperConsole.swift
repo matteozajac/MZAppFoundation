@@ -1,4 +1,5 @@
 import MZAppFoundation
+@_exported import MZAppFoundationUI
 import PulseUI
 import SwiftUI
 
@@ -7,7 +8,13 @@ public struct DeveloperConsole: View {
     public init(options: DeveloperOptions) { self.options = options }
     public var body: some View {
         NavigationStack {
-            if options.isEnabled { ConsoleView(store: .shared, mode: .logs) }
+            if options.isEnabled {
+                #if os(macOS)
+                FoundationMacConsole()
+                #else
+                ConsoleView(store: .shared, mode: .logs)
+                #endif
+            }
             else { ContentUnavailableView("Developer mode is off", systemImage: "lock") }
         }
         .accessibilityIdentifier("mz.developer.console")
@@ -18,15 +25,25 @@ public struct DeveloperConsole: View {
 }
 
 public struct DeveloperConsoleScene: Scene {
-    public static let id = "mzappfoundation.console"
+    public static let id = DeveloperOptions.consoleSceneID
     private let options: DeveloperOptions
     public init(options: DeveloperOptions) { self.options = options }
     public var body: some Scene {
+        #if os(macOS)
+        Window("Developer Console", id: Self.id) {
+            DeveloperConsole(options: options).onDisappear { options.dismissConsole() }
+        }
+        .defaultSize(width: 800, height: 600)
+        .defaultLaunchBehavior(.suppressed)
+        .restorationBehavior(.disabled)
+        .commandsRemoved()
+        #else
         WindowGroup("Developer Console", id: Self.id) {
             DeveloperConsole(options: options)
                 .onDisappear { options.dismissConsole() }
         }
         .defaultSize(width: 800, height: 600)
+        #endif
     }
 }
 
@@ -45,12 +62,12 @@ public extension View {
 
 private struct DeveloperToolsModifier: ViewModifier {
     @Bindable var options: DeveloperOptions
+    @Environment(\.scenePhase) private var scenePhase
     #if os(iOS)
     var reporting: DeveloperReporting? = nil
     @State private var window = ReportingWindow()
-    @Environment(\.scenePhase) private var scenePhase
     #endif
-    #if os(visionOS)
+    #if os(visionOS) || os(macOS)
     @Environment(\.openWindow) private var openWindow
     @Environment(\.dismissWindow) private var dismissWindow
     #endif
@@ -58,6 +75,9 @@ private struct DeveloperToolsModifier: ViewModifier {
     func body(content: Content) -> some View {
         let isPresented = options.consoleRequested && options.isEnabled
         return content
+            .onChange(of: scenePhase) { _, phase in
+                if phase == .active { options.refreshExpiration() }
+            }
             .onOpenURL { url in
                 if options.handle(url) {
                     #if os(visionOS)
@@ -86,6 +106,17 @@ private struct DeveloperToolsModifier: ViewModifier {
             .onChange(of: options.consoleRequested, initial: true) { _, requested in
                 if requested && options.isEnabled { openWindow(id: DeveloperConsoleScene.id) }
                 else { dismissWindow(id: DeveloperConsoleScene.id) }
+            }
+            .onChange(of: options.isEnabled) { _, enabled in
+                if !enabled { dismissWindow(id: DeveloperConsoleScene.id) }
+            }
+            #elseif os(macOS)
+            .onChange(of: options.consoleRequested, initial: true) { _, requested in
+                if requested && options.isEnabled { openWindow(id: DeveloperConsoleScene.id) }
+                else { dismissWindow(id: DeveloperConsoleScene.id) }
+            }
+            .onChange(of: options.isEnabled) { _, enabled in
+                if !enabled { dismissWindow(id: DeveloperConsoleScene.id) }
             }
             #endif
     }

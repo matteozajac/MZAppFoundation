@@ -94,13 +94,18 @@ import Pulse
 @MainActor public enum LocalServices {
     public static func make(configuration: AppConfiguration, schema: TelemetrySchema,
                             purchases: any PurchaseProviding = MockPurchases(),
-                            defaults: UserDefaults = .standard, redaction: RedactionPolicy = .init()) -> AppServices {
+                            defaults: UserDefaults = .standard, redaction: RedactionPolicy = .init(),
+                            foundationDiagnostics: FoundationDiagnostics = .init(),
+                            additionalAnalytics: [any AnalyticsEngine] = [],
+                            additionalDiagnostics: [any DiagnosticsEngine] = []) -> AppServices {
         let logger = PulseLogger(redaction: redaction)
         let engine = LocalTelemetryEngine(logger: logger)
         return AppServices(configuration: configuration,
                            telemetry: Telemetry(configuration: configuration, schema: schema,
-                                                analytics: [engine], diagnostics: [engine], redaction: redaction),
+                                                analytics: [engine] + additionalAnalytics,
+                                                diagnostics: [engine] + additionalDiagnostics, redaction: redaction),
                            logger: logger, purchases: purchases,
-                           developerOptions: DeveloperOptions(configuration: configuration, defaults: defaults))
+                           developerOptions: DeveloperOptions(configuration: configuration, defaults: defaults),
+                           foundationDiagnostics: foundationDiagnostics)
     }
 }

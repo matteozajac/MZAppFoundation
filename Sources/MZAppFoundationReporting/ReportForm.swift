@@ -79,6 +79,18 @@ struct ReportForm: View {
                         Button(t("bug_retry")) { Task { await draft.prepareLogs() } }
                     }
                 }
+                if draft.hasDiagnostics || draft.diagnosticsUnavailable {
+                    Section("App Foundation diagnostics") {
+                        Toggle("Include diagnostics snapshot", isOn: $draft.includeDiagnostics)
+                            .accessibilityIdentifier("bugReporter.diagnostics")
+                        if draft.diagnosticsUnavailable {
+                            Text("A safe diagnostics snapshot could not be created.").foregroundStyle(.secondary)
+                        } else {
+                            Text("Includes app versions, provider configuration, aggregate counters, and lifecycle status. Review this snapshot before sharing.")
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                }
                 Section(t("bug_details")) {
                     ForEach(draft.report.metadata.sorted { $0.key < $1.key }, id: \.key) { key, value in
                         LabeledContent(key, value: value)

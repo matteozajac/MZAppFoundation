@@ -32,7 +32,13 @@ class SetupTests(unittest.TestCase):
             self.assertEqual(bootstrap, (root / '.mzappfoundation/Generated/MZBootstrap.swift').read_bytes())
             project = yaml.safe_load(before)
             self.assertEqual(project['targets']['DemoLocal']['dependencies'][0]['product'], 'MZAppFoundation')
-            self.assertEqual(project['targets']['Demo']['dependencies'][0]['product'], 'MZAppFoundationFirebase')
+            self.assertEqual(project['targets']['Demo']['dependencies'][0]['product'], 'MZAppFoundation')
+            for name in ('Debug', 'Internal', 'Release'):
+                self.assertIn('MZ_LOCAL', project['targets']['DemoLocal']['settings']['configs'][name]['SWIFT_ACTIVE_COMPILATION_CONDITIONS'])
+            for target in ('Demo', 'DemoLocal'):
+                scripts = project['targets'][target]['postBuildScripts']
+                self.assertEqual([script['name'] for script in scripts].count('MZ Build Metadata'), 1)
+                self.assertIn('MZFoundationBuildMetadata.plist', scripts[-1]['script'])
             self.assertIn('absent', setup.inventory(root, config)['catalog'])
             self.assertFalse(setup.verify(root, config)['verified'])
 
@@ -45,7 +51,78 @@ class SetupTests(unittest.TestCase):
             setup.apply(root, config)
             properties = yaml.safe_load((root / 'project.yml').read_text())['targets']['Demo']['info']['properties']
             self.assertEqual(properties['CustomSetting'], 'keep')
-            self.assertEqual(len(properties['CFBundleURLTypes']), 2)
+            schemes = [scheme for entry in properties['CFBundleURLTypes'] for scheme in entry['CFBundleURLSchemes']]
+            self.assertEqual(set(schemes), {'existing', 'demo', 'mzappfoundation'})
+
+    def test_developer_settings_generation_preserves_old_version_compatibility(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root, config = self.fixture(directory)
+            config['developer_link_host'] = 'demo'
+            config['providers'] = {'revenuecat_project_name': 'Demo Project', 'sentry_org': 'example', 'sentry_project': 'demo'}
+            source = setup.bootstrap(config)
+            self.assertIn('developerLinkHost: "demo"', source)
+            self.assertIn('revenueCatProject = ProviderProjectIdentity(name: "Demo Project"', source)
+            self.assertNotIn('import MZAppFoundationFirebase', source)
+            self.assertIn('LocalServices.make', source)
+            old = dict(config)
+            old.pop('package_path')
+            old.pop('developer_link_host')
+            old['providers'] = {}
+            old['package_version'] = '0.3.1'
+            self.assertNotIn('makeRecovering', setup.bootstrap(old))
+            self.assertEqual(setup.url_schemes(old), ['demo'])
+
+    def test_default_remote_release_pins_current_version_and_settings_contract(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root, config = self.fixture(directory)
+            config.pop('package_path')
+            setup.apply(root, config)
+            project = yaml.safe_load((root / 'project.yml').read_text())
+            self.assertEqual(project['packages']['MZAppFoundation']['version'], '0.5.0')
+            self.assertEqual(project['targets']['Demo']['dependencies'][0]['product'], 'MZAppFoundation')
+            self.assertIn('--foundation-version 0.5.0', setup.build_metadata_script(config))
+            self.assertIn('mzappfoundation', setup.url_schemes(config))
+            self.assertFalse(setup.developer_settings_supported(dict(config, package_version='0.4.0')))
+            self.assertTrue(setup.developer_settings_supported(dict(config, package_version='0.5.0')))
+
+            subprocess.run(['xcodegen', 'generate'], cwd=root, check=True, capture_output=True)
+            config.update(project_type='native', project='Demo.xcodeproj')
+            setup.apply(root, config)
+            ruby = os.environ.get('RUBY', 'ruby')
+            result = subprocess.run([ruby, '-rxcodeproj', '-rjson', '-e',
+                'p = Xcodeproj::Project.open(ARGV[0]); puts JSON.generate(p.root_object.package_references.map { |r| r.requirement })',
+                str(root / 'Demo.xcodeproj')], check=True, text=True, capture_output=True)
+            self.assertEqual(json.loads(result.stdout), [{'kind': 'exactVersion', 'version': '0.5.0'}])
+
+    def test_macos_setup_has_native_platforms_and_build_metadata(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root, config = self.fixture(directory)
+            config['platform'] = 'macOS'
+            project = yaml.safe_load((root / 'project.yml').read_text())
+            project['targets']['Demo'].update(platform='macOS', deploymentTarget='15.0')
+            (root / 'project.yml').write_text(yaml.safe_dump(project))
+            setup.apply(root, config)
+            configured = yaml.safe_load((root / 'project.yml').read_text())
+            for target in ('Demo', 'DemoLocal'):
+                self.assertEqual(configured['targets'][target]['settings']['base']['SUPPORTED_PLATFORMS'], 'macosx')
+                self.assertEqual(len(configured['targets'][target]['postBuildScripts']), 1)
+            self.assertEqual(configured['targets']['Demo']['dependencies'][0]['product'], 'MZAppFoundation')
+
+    def test_provider_products_follow_supplied_configuration_without_umbrella_linkage(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root, config = self.fixture(directory)
+            config['providers'] = {'sentry_dsn': 'https://public@example.invalid/12'}
+            self.assertEqual(setup.provider_products(config), ['MZAppFoundation', 'MZAppFoundationSentry'])
+            source = setup.bootstrap(config)
+            self.assertIn('import MZAppFoundationSentry', source)
+            self.assertNotIn('import MZAppFoundationRevenueCat', source)
+            self.assertNotIn('import MZAppFoundationFirebase', source)
+            self.assertNotIn('import MZAppFoundationLive', source)
+            config['providers'].update(revenuecat_public_key='appl_example_public', google_service_info='GoogleService-Info.plist')
+            self.assertEqual(setup.provider_products(config), ['MZAppFoundation', 'MZAppFoundationRevenueCat',
+                                                              'MZAppFoundationSentry', 'MZAppFoundationFirebaseAnalytics'])
+            config['platform'] = 'visionOS'
+            self.assertNotIn('MZAppFoundationFirebaseAnalytics', setup.provider_products(config))
 
     def test_native_setup_is_semantically_idempotent(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -61,7 +138,7 @@ class SetupTests(unittest.TestCase):
                 'p = Xcodeproj::Project.open(ARGV[0]); puts JSON.generate(p.targets.map { |t| [t.name, t.package_product_dependencies.map(&:product_name), t.source_build_phase.files.count] })', str(root / 'Demo.xcodeproj')], check=True, text=True, capture_output=True)
             targets = json.loads(result.stdout)
             self.assertEqual(len(targets), 2)
-            self.assertEqual(targets[0][1], ['MZAppFoundationFirebase'])
+            self.assertEqual(targets[0][1], ['MZAppFoundation'])
             self.assertEqual(targets[1][1], ['MZAppFoundation'])
             self.assertTrue(all(t[2] == 2 for t in targets))
 

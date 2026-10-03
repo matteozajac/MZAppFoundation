@@ -17,6 +17,7 @@ public struct DeliveryPreferences: Equatable, Codable, Sendable {
 public struct AppConfiguration: Equatable, Sendable {
     public let bundleIdentifier: String
     public let urlScheme: String
+    public let developerLinkHost: String
     public let environment: AppEnvironment
     public let version: String
     public let build: String
@@ -24,9 +25,11 @@ public struct AppConfiguration: Equatable, Sendable {
     public var release: String { "\(bundleIdentifier)@\(version)+\(build)" }
 
     public init(bundleIdentifier: String, urlScheme: String, environment: AppEnvironment,
-                version: String = "0", build: String = "0", preferences: DeliveryPreferences = .init()) {
+                version: String = "0", build: String = "0", preferences: DeliveryPreferences = .init(),
+                developerLinkHost: String? = nil) {
         self.bundleIdentifier = bundleIdentifier
         self.urlScheme = urlScheme
+        self.developerLinkHost = (developerLinkHost ?? bundleIdentifier).lowercased()
         self.environment = environment
         self.version = version
         self.build = build

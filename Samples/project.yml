@@ -13,10 +13,10 @@ settings:
     SWIFT_VERSION: '6.0'
     SWIFT_STRICT_CONCURRENCY: complete
     GENERATE_INFOPLIST_FILE: true
-    MARKETING_VERSION: 0.3.1
+    MARKETING_VERSION: 0.5.0
     CURRENT_PROJECT_VERSION: 1
     CODE_SIGNING_ALLOWED: false
-    ENABLE_USER_SCRIPT_SANDBOXING: true
+    ENABLE_USER_SCRIPT_SANDBOXING: false
 targetTemplates:
   Base:
     type: application
@@ -29,6 +29,7 @@ targetTemplates:
         CFBundleURLTypes:
         - CFBundleURLSchemes:
           - mzsample
+          - mzappfoundation
         UIApplicationSceneManifest:
           UIApplicationSupportsMultipleScenes: true
           UIApplicationPreferredDefaultSceneSessionRole: UIWindowSceneSessionRoleApplication
@@ -50,7 +51,31 @@ targetTemplates:
           SWIFT_ACTIVE_COMPILATION_CONDITIONS: $(inherited) DEBUG
         Internal:
           SWIFT_ACTIVE_COMPILATION_CONDITIONS: $(inherited) MZ_INTERNAL
+    postBuildScripts:
+    - name: MZ Build Metadata
+      script: python3 "$SRCROOT/../scripts/generate_build_metadata.py" --app-root "$SRCROOT" --foundation-root "$SRCROOT/.." --channel "$CONFIGURATION" --stamp-build-time --output "$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH/MZFoundationBuildMetadata.plist"
+      basedOnDependencyAnalysis: false
 targets:
+  FoundationMacLocal:
+    templates:
+    - Base
+    platform: macOS
+    deploymentTarget: '15.0'
+    dependencies:
+    - package: MZAppFoundation
+      product: MZAppFoundation
+    settings:
+      base:
+        SUPPORTED_PLATFORMS: macosx
+        SWIFT_ACTIVE_COMPILATION_CONDITIONS: $(inherited) MZ_LOCAL
+        ENABLE_USER_SCRIPT_SANDBOXING: false
+      configs:
+        Debug:
+          SWIFT_ACTIVE_COMPILATION_CONDITIONS: $(inherited) DEBUG MZ_LOCAL
+        Internal:
+          SWIFT_ACTIVE_COMPILATION_CONDITIONS: $(inherited) MZ_INTERNAL MZ_LOCAL
+        Release:
+          SWIFT_ACTIVE_COMPILATION_CONDITIONS: $(inherited) MZ_LOCAL
   FoundationLocal:
     templates:
     - Base
@@ -63,6 +88,13 @@ targets:
       base:
         SUPPORTED_PLATFORMS: iphonesimulator
         SWIFT_ACTIVE_COMPILATION_CONDITIONS: $(inherited) MZ_LOCAL
+      configs:
+        Debug:
+          SWIFT_ACTIVE_COMPILATION_CONDITIONS: $(inherited) DEBUG MZ_LOCAL
+        Internal:
+          SWIFT_ACTIVE_COMPILATION_CONDITIONS: $(inherited) MZ_INTERNAL MZ_LOCAL
+        Release:
+          SWIFT_ACTIVE_COMPILATION_CONDITIONS: $(inherited) MZ_LOCAL
     info:
       path: Info/FoundationLocal.plist
       properties:
@@ -96,6 +128,13 @@ targets:
       base:
         SUPPORTED_PLATFORMS: xrsimulator
         SWIFT_ACTIVE_COMPILATION_CONDITIONS: $(inherited) MZ_LOCAL
+      configs:
+        Debug:
+          SWIFT_ACTIVE_COMPILATION_CONDITIONS: $(inherited) DEBUG MZ_LOCAL
+        Internal:
+          SWIFT_ACTIVE_COMPILATION_CONDITIONS: $(inherited) MZ_INTERNAL MZ_LOCAL
+        Release:
+          SWIFT_ACTIVE_COMPILATION_CONDITIONS: $(inherited) MZ_LOCAL
   FoundationVisionDevice:
     templates:
     - Base
@@ -119,6 +158,18 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.matteozajac.mzfoundation.uitests
         GENERATE_INFOPLIST_FILE: true
+  FoundationMacUITests:
+    type: bundle.ui-testing
+    platform: macOS
+    deploymentTarget: '15.0'
+    sources:
+    - MacUITests
+    dependencies:
+    - target: FoundationMacLocal
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.matteozajac.mzfoundation.macuitests
+        GENERATE_INFOPLIST_FILE: true
   FoundationVisionUITests:
     type: bundle.ui-testing
     platform: visionOS
@@ -139,6 +190,8 @@ targets:
     dependencies:
     - package: MZAppFoundation
       product: MZAppFoundationLive
+    - package: MZAppFoundation
+      product: MZAppFoundationFirebase
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.matteozajac.mzfoundation.adaptertests
@@ -157,6 +210,24 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.matteozajac.mzfoundation.reportingtests
 schemes:
+  FoundationMacLocal:
+    build:
+      targets:
+        FoundationMacLocal: all
+    run:
+      config: Debug
+    test:
+      config: Debug
+      targets:
+      - FoundationMacUITests
+  FoundationMacUITests:
+    build:
+      targets:
+        FoundationMacUITests: all
+    test:
+      config: Debug
+      targets:
+      - FoundationMacUITests
   FoundationAdapterTests:
     build:
       targets:

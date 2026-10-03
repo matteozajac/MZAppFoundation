@@ -16,6 +16,7 @@ final class ReportDraft {
     var includeScreenshot = true
     var includeVideo = true
     var includeLogs = true
+    var includeDiagnostics = true
     var shareAsZIP = true
     var logScope = BugLogScope.currentSession
     var videoDuration: Double = 0
@@ -30,6 +31,13 @@ final class ReportDraft {
     private let exporter = VideoExporter()
     private let archive = ReportArchive()
     private let archivePrefix: String
+    private let diagnostics: ReportDiagnosticsCapture
+    var hasDiagnostics: Bool {
+        if case .available = diagnostics { true } else { false }
+    }
+    var diagnosticsUnavailable: Bool {
+        if case .unavailable = diagnostics { true } else { false }
+    }
     private var logGeneration = UUID()
     private var activeLogExports = 0
     private var idleWaiters: [CheckedContinuation<Void, Never>] = []
@@ -46,16 +54,18 @@ final class ReportDraft {
         for waiter in waiters { waiter.resume() }
     }
 
-    init(report: BugReport, directory: URL, provider: any BugReportAttachmentProvider, archivePrefix: String = "bug-report") {
+    init(report: BugReport, directory: URL, provider: any BugReportAttachmentProvider, archivePrefix: String = "bug-report",
+         diagnostics: ReportDiagnosticsCapture = .notProvided) {
         self.report = report
         self.directory = directory
         voiceNote = VoiceNoteRecorder(directory: directory)
         self.provider = provider
         self.archivePrefix = archivePrefix
+        self.diagnostics = diagnostics
     }
 
     var hasEdits: Bool {
-        report.hasEdits || voiceNote.hasEdits || !includeScreenshot || !includeVideo || !includeLogs || !shareAsZIP || logScope != .currentSession || trimStart != 0 || trimEnd != videoDuration
+        report.hasEdits || voiceNote.hasEdits || !includeScreenshot || !includeVideo || !includeLogs || !includeDiagnostics || !shareAsZIP || logScope != .currentSession || trimStart != 0 || trimEnd != videoDuration
     }
 
     var canShare: Bool {
@@ -125,6 +135,19 @@ final class ReportDraft {
         if includeLogs, let logs { urls.append(logs) }
         var report = report
         report.title = report.title.trimmingCharacters(in: .whitespacesAndNewlines)
+        switch diagnostics {
+        case .notProvided: break
+        case .available(let data):
+            if includeDiagnostics {
+                let target = output.appendingPathComponent("diagnostics.json")
+                try ReportDiagnosticsAttachment.validated(data).write(to: target, options: .atomic)
+                urls.append(target)
+                report.attachmentStatus["diagnostics"] = "included"
+            } else { report.attachmentStatus["diagnostics"] = "excluded" }
+        case .unavailable:
+            report.attachmentStatus["diagnostics"] = includeDiagnostics ? "unavailable" : "excluded"
+            if includeDiagnostics { report.attachmentErrors["diagnostics"] = "A safe diagnostics snapshot could not be created." }
+        }
         if voiceNote.hasRecording, let audio = voiceNote.url {
             let target = output.appendingPathComponent("voice-note.m4a")
             // Copy the original AAC; recompression would only reduce speech quality.

@@ -8,6 +8,7 @@ import os
 from pathlib import Path
 import plistlib
 import re
+import shlex
 import shutil
 import subprocess
 import sys
@@ -19,6 +20,135 @@ SAFETY = {'FirebaseAutomaticScreenReportingEnabled': False, 'FIREBASE_ANALYTICS_
 
 
 DEFAULT_MICROPHONE = 'Record a voice message when you choose to describe a bug.'
+
+def developer_settings_supported(config):
+    return 'package_path' in config or tuple(map(int, config.get('package_version', '0.5.0').split('.'))) >= (0, 5, 0)
+
+def supported_platforms(config, local=False):
+    return {'iOS': ('iphonesimulator', 'iphoneos'), 'visionOS': ('xrsimulator', 'xros'),
+            'macOS': ('macosx', 'macosx')}[config['platform']][0 if local else 1]
+
+def build_metadata_script(config):
+    command = 'python3 "$SRCROOT/.mzappfoundation/Generated/generate_build_metadata.py" --app-root "$SRCROOT"'
+    if config.get('package_path'):
+        command += ' --foundation-root ' + shlex.quote(config['package_path'])
+    else:
+        command += ' --foundation-version ' + shlex.quote(config.get('package_version', '0.5.0'))
+    return command + ' --channel "$CONFIGURATION" --stamp-build-time --output "$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH/MZFoundationBuildMetadata.plist"'
+
+def provider_products(config):
+    if not developer_settings_supported(config):
+        return ['MZAppFoundationFirebase' if config['platform'] == 'iOS' else 'MZAppFoundationLive']
+    providers = config.get('providers', {})
+    products = ['MZAppFoundation']
+    if providers.get('revenuecat_public_key'): products.append('MZAppFoundationRevenueCat')
+    if providers.get('sentry_dsn'): products.append('MZAppFoundationSentry')
+    if config['platform'] == 'iOS' and providers.get('google_service_info'): products.append('MZAppFoundationFirebaseAnalytics')
+    return products
+
+def independent_device_bootstrap(config):
+    providers = config.get('providers', {})
+    def optional(key): return swift_literal(providers[key]) if providers.get(key) else 'nil'
+    source = ['        var inventory = FoundationDiagnostics()',
+              '        var purchases: any PurchaseProviding = UnavailablePurchases()',
+              '        var analytics: [any AnalyticsEngine] = []',
+              '        var diagnostics: [any DiagnosticsEngine] = []',
+              '        let remoteAllowed = RuntimeSafety.permitsRemote(environment: configuration.environment)']
+    if any(providers.get(key) for key in ['revenuecat_public_key', 'revenuecat_project_name', 'revenuecat_project_id', 'revenuecat_app_id']):
+        source.append(f'''        let revenueCatProject = ProviderProjectIdentity(name: {optional('revenuecat_project_name')}, projectID: {optional('revenuecat_project_id')}, appID: {optional('revenuecat_app_id')})''')
+    if any(providers.get(key) for key in ['sentry_dsn', 'sentry_project', 'sentry_project_id', 'sentry_org']):
+        source.append(f'''        let sentryProject = ProviderProjectIdentity(name: {optional('sentry_project')}, projectID: {optional('sentry_project_id')}, organization: {optional('sentry_org')})''')
+    for provider, credential, module_type, diagnostic_api, identity, constructor in [
+        ('revenueCat', 'revenuecat_public_key', 'RevenueCatPurchases', 'RevenueCatProvider', 'revenueCatProject', 'key'),
+        ('sentry', 'sentry_dsn', 'SentryDiagnostics', 'SentryProvider', 'sentryProject', 'dsn')]:
+        if providers.get(credential):
+            variable = 'revenueCat' if provider == 'revenueCat' else 'sentry'
+            assignment = 'purchases = adapter' if provider == 'revenueCat' else 'diagnostics.append(adapter)'
+            argument = 'publicKey' if provider == 'revenueCat' else 'dsn'
+            owned_argument = 'purchases' if provider == 'revenueCat' else 'engine'
+            source.append(f'''        let {variable}Credential: String? = {optional(credential)}
+        var {variable}Adapter: {module_type}?
+        var {variable}Failed = false
+        if remoteAllowed, let credential = {variable}Credential {{
+            do {{
+                let adapter = try {module_type}({constructor}: credential, configuration: configuration)
+                {variable}Adapter = adapter
+                {assignment}
+                inventory = inventory.recordingStartup([.init(provider: .{provider}, stage: .validation, status: .succeeded,
+                    code: "{variable}.adapter_created", message: "The adapter accepted the supplied configuration.")])
+            }} catch {{
+                {variable}Failed = true
+                inventory.bootstrapIssue = "A provider failed to start. Review Startup history."
+                inventory = inventory.recordingStartup([.init(provider: .{provider}, stage: .initialization, status: .failed,
+                    code: "{variable}.startup_failed", message: "The provider adapter could not be created.",
+                    correction: "Check this app's provider configuration and whether another composition already owns the SDK.")])
+            }}
+        }} else {{
+            inventory = inventory.recordingStartup([.init(provider: .{provider}, stage: .runtimeSafety, status: .skipped,
+                code: "{variable}.runtime_blocked", message: "Remote provider startup was blocked by runtime safety.")])
+        }}
+        inventory = {diagnostic_api}.diagnostics({argument}: {variable}Credential, project: {identity},
+            base: inventory, bootstrapFailure: {variable}Failed, {owned_argument}: {variable}Adapter)''')
+        elif (provider == 'revenueCat' and any(providers.get(key) for key in ['revenuecat_project_name', 'revenuecat_project_id', 'revenuecat_app_id'])) or \
+                (provider == 'sentry' and any(providers.get(key) for key in ['sentry_project', 'sentry_project_id', 'sentry_org'])):
+            source.append(f'''        inventory = inventory.replacing(.{provider}) {{ _ in
+            ProviderSnapshot(provider: .{provider}, details: {identity}.details,
+                explanation: "Project labels were supplied, but this composition does not link the provider adapter.",
+                identityAudit: .init(supplied: {identity}, ownership: .notInitialized))
+        }}''')
+    if config['platform'] == 'iOS' and providers.get('google_service_info'):
+        source.append(f'''        #if os(iOS)
+        let firebasePath = bundle.path(forResource: "GoogleService-Info", ofType: "plist")
+        var firebaseAdapter: FirebaseAnalyticsEngine?
+        var firebaseFailed = false
+        if !remoteAllowed {{
+            inventory = inventory.recordingStartup([.init(provider: .firebase, stage: .runtimeSafety, status: .skipped,
+                code: "firebase.runtime_blocked", message: "Firebase startup was blocked by runtime safety.")])
+        }} else if let firebasePath {{
+            do {{
+                let adapter = try FirebaseAnalyticsEngine(configuration: configuration, path: firebasePath)
+                firebaseAdapter = adapter
+                analytics.append(adapter)
+                inventory = inventory.recordingStartup([.init(provider: .firebase, stage: .validation, status: .succeeded,
+                    code: "firebase.adapter_created", message: "The adapter accepted the supplied Firebase configuration.")])
+            }} catch {{
+                firebaseFailed = true
+                inventory.bootstrapIssue = "A provider failed to start. Review Startup history."
+                inventory = inventory.recordingStartup([.init(provider: .firebase, stage: .initialization, status: .failed,
+                    code: "firebase.startup_failed", message: "The Firebase adapter could not be created.",
+                    correction: "Check GoogleService-Info.plist, its bundle ID and existing Firebase SDK ownership.")])
+            }}
+        }} else {{
+            inventory.bootstrapIssue = "The expected Firebase configuration file is missing from this app bundle."
+            inventory = inventory.recordingStartup([.init(provider: .firebase, stage: .validation, status: .failed,
+                code: "firebase.file_missing", message: "GoogleService-Info.plist was not found in the app bundle.",
+                correction: "Add this app's GoogleService-Info.plist to the application target's resources.")])
+        }}
+        if let firebaseAdapter {{
+            inventory = FirebaseProvider.diagnostics(googleServiceInfoPath: firebasePath,
+                projectName: {optional('firebase_project_name')}, engine: firebaseAdapter, base: inventory)
+        }} else {{
+            inventory = FirebaseProvider.diagnostics(googleServiceInfoPath: firebasePath,
+                bootstrapFailure: firebaseFailed, projectName: {optional('firebase_project_name')}, base: inventory)
+        }}
+        #endif''')
+    elif providers.get('firebase_project_name'):
+        source.append(f'''        inventory = inventory.replacing(.firebase) {{ context in
+            let file = FirebaseConfigurationInspection.inspect(bundleIdentifier: context.configuration.bundleIdentifier,
+                path: bundle.path(forResource: "GoogleService-Info", ofType: "plist"))
+            return ProviderSnapshot(provider: .firebase, configuration: file.state,
+                details: [.init("projectName", label: "Project name", value: {optional('firebase_project_name')})] + file.details,
+                explanation: file.explanation + " The Firebase adapter is not linked to this composition.")
+        }}''')
+    source.append('''        return LocalServices.make(configuration: configuration, schema: schema, purchases: purchases,
+            foundationDiagnostics: inventory, additionalAnalytics: analytics, additionalDiagnostics: diagnostics)''')
+    return '\n'.join(source)
+
+def url_schemes(config):
+    schemes = [config['url_scheme']]
+    if developer_settings_supported(config) and 'mzappfoundation' not in schemes:
+        schemes.append('mzappfoundation')
+    return schemes
 
 def reporting_enabled(config):
     return config.get('bug_reporting', False) and config['platform'] == 'iOS'
@@ -39,25 +169,34 @@ def load(root, config_path):
     for key in ['project', 'project_type', 'target', 'bundle_id', 'url_scheme', 'platform']:
         if not config.get(key):
             raise ValueError(f'Missing {key}')
-    if config['project_type'] not in ['xcodegen', 'native'] or config['platform'] not in ['iOS', 'visionOS']:
+    if config['project_type'] not in ['xcodegen', 'native'] or config['platform'] not in ['iOS', 'visionOS', 'macOS']:
         raise ValueError('Unsupported project_type or platform')
+    if config['platform'] == 'macOS' and not developer_settings_supported(config):
+        raise ValueError('macOS setup requires MZAppFoundation 0.5.0 or a current local checkout')
     for key in ['target', 'bundle_id', 'url_scheme']:
         if not re.fullmatch(r'[A-Za-z][A-Za-z0-9_.-]*', config[key]):
             raise ValueError(f'Invalid {key}')
     within(root, config['project'])
     # Administrative secrets must never enter a source-generation manifest.
     for key in config.get('providers', {}):
-        if key not in ['revenuecat_public_key', 'sentry_dsn', 'google_service_info', 'sentry_org', 'sentry_project']:
+        if key not in ['revenuecat_public_key', 'sentry_dsn', 'google_service_info', 'sentry_org', 'sentry_project',
+                       'revenuecat_project_name', 'revenuecat_project_id', 'revenuecat_app_id', 'sentry_project_id', 'firebase_project_name']:
             raise ValueError(f'Unsupported provider setting: {key}; administrative tokens belong in environment/CI')
     public_key = config.get('providers', {}).get('revenuecat_public_key')
     if public_key and not public_key.startswith('appl_'):
         raise ValueError('RevenueCat configuration requires an Apple public SDK key')
-    if 'package_path' not in config and not re.fullmatch(r'\d+\.\d+\.\d+', config.get('package_version', '0.3.1')):
+    if 'package_path' not in config and not re.fullmatch(r'\d+\.\d+\.\d+', config.get('package_version', '0.5.0')):
         raise ValueError('package_version must be an exact semantic version')
+    if config.get('developer_link_host') and not all(re.fullmatch(r'[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?', label)
+                                                    for label in config['developer_link_host'].split('.')):
+        raise ValueError('developer_link_host must be an app-specific URL host')
+    metadata_keys = ['revenuecat_project_name', 'revenuecat_project_id', 'revenuecat_app_id', 'sentry_project_id', 'firebase_project_name']
+    if (config.get('developer_link_host') or any(k in config.get('providers', {}) for k in metadata_keys)) and not developer_settings_supported(config):
+        raise ValueError('Developer settings metadata requires MZAppFoundation 0.5.0 or a current local checkout')
     if not isinstance(config.get('bug_reporting', False), bool):
         raise ValueError('bug_reporting must be a boolean')
     if config.get('bug_reporting'):
-        if 'package_path' not in config and tuple(map(int, config.get('package_version', '0.3.1').split('.'))) < (0, 3, 0):
+        if 'package_path' not in config and tuple(map(int, config.get('package_version', '0.5.0').split('.'))) < (0, 3, 0):
             raise ValueError('Bug reporting requires MZAppFoundation 0.3.0 or later')
         if config['platform'] != 'iOS':
             raise ValueError('Bug reporting in 0.3.0 requires iOS; keep the standard console on other platforms')
@@ -98,19 +237,37 @@ def bootstrap(config):
     firebase_path = 'bundle.path(forResource: "GoogleService-Info", ofType: "plist")' if providers.get('google_service_info') else 'nil'
     analytics = str(config.get('analytics_enabled', True)).lower()
     diagnostics = str(config.get('diagnostics_enabled', True)).lower()
+    modern = developer_settings_supported(config)
+    host = ',\n            developerLinkHost: ' + swift_literal(config.get('developer_link_host', config['bundle_id'])) if modern else ''
+    if modern:
+        device_bootstrap = independent_device_bootstrap(config)
+    else:
+        device_bootstrap = f'''        do {{
+            let vendors = LiveConfiguration(revenueCatPublicKey: {key}, sentryDSN: {dsn})
+            #if os(iOS)
+            return try FirebaseServices.make(configuration: configuration, vendors: vendors, schema: schema,
+                googleServiceInfoPath: {firebase_path})
+            #else
+            return try LiveServices.make(configuration: configuration, vendors: vendors, schema: schema)
+            #endif
+        }} catch {{
+            let fallback = LocalServices.make(configuration: configuration, schema: schema, purchases: UnavailablePurchases())
+            fallback.logger.error("Bootstrap configuration failed", error: error, category: "setup")
+            return fallback
+        }}'''
     reporting = ''
     if reporting_enabled(config):
         prefix = swift_literal(config.get('report_archive_prefix', 'bug-report'))
         reporting = f'    #if os(iOS)\n    static let reporting = DeveloperReporting(archivePrefix: {prefix})\n    #endif\n'
+    provider_imports = 'import MZAppFoundationLive\n#if os(iOS)\nimport MZAppFoundationFirebase\n#endif'
+    if modern:
+        provider_imports = '\n'.join('import ' + product for product in provider_products(config) if product != 'MZAppFoundation')
     return f'''// Generated by mz-app-foundation-setup. App-specific event definitions remain in config.json.
 import Foundation
 import MZAppFoundation
 import MZAppFoundationLocal
 #if !MZ_LOCAL && !targetEnvironment(simulator)
-import MZAppFoundationLive
-#if os(iOS)
-import MZAppFoundationFirebase
-#endif
+{provider_imports}
 #endif
 
 @MainActor enum MZBootstrap {{
@@ -130,24 +287,12 @@ import MZAppFoundationFirebase
             urlScheme: {swift_literal(config['url_scheme'])}, environment: environment,
             version: bundle.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0",
             build: bundle.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "0",
-            preferences: .init(analytics: {analytics}, diagnostics: {diagnostics}))
+            preferences: .init(analytics: {analytics}, diagnostics: {diagnostics}){host})
         let schema = TelemetrySchema(events: {event_literal})
         #if MZ_LOCAL || targetEnvironment(simulator)
         return LocalServices.make(configuration: configuration, schema: schema)
         #else
-        do {{
-            let vendors = LiveConfiguration(revenueCatPublicKey: {key}, sentryDSN: {dsn})
-            #if os(iOS)
-            return try FirebaseServices.make(configuration: configuration, vendors: vendors, schema: schema,
-                googleServiceInfoPath: {firebase_path})
-            #else
-            return try LiveServices.make(configuration: configuration, vendors: vendors, schema: schema)
-            #endif
-        }} catch {{
-            let fallback = LocalServices.make(configuration: configuration, schema: schema, purchases: UnavailablePurchases())
-            fallback.logger.error("Bootstrap configuration failed", error: error, category: "setup")
-            return fallback
-        }}
+{device_bootstrap}
         #endif
     }}
 }}
@@ -168,8 +313,9 @@ def configure_plist(path, config):
     values.update(SAFETY)
     if reporting_enabled(config): values.setdefault('NSMicrophoneUsageDescription', microphone_description(config))
     entries = values.setdefault('CFBundleURLTypes', [])
-    if not any(config['url_scheme'] in item.get('CFBundleURLSchemes', []) for item in entries):
-        entries.append({'CFBundleURLSchemes': [config['url_scheme']]})
+    for scheme in url_schemes(config):
+        if not any(scheme in item.get('CFBundleURLSchemes', []) for item in entries):
+            entries.append({'CFBundleURLSchemes': [scheme]})
     write(path, plistlib.dumps(values, sort_keys=True))
 
 
@@ -181,16 +327,15 @@ def mutate_xcodegen(root, config):
     local_name = config['target'] + 'Local'
     spec.setdefault('configs', {'Debug': 'debug', 'Release': 'release'}).setdefault('Internal', 'release')
     package = {'path': config['package_path']} if config.get('package_path') else {
-        'url': 'git@github.com:matteozajac/MZAppFoundation.git', 'version': config.get('package_version', '0.3.1')}
+        'url': 'git@github.com:matteozajac/MZAppFoundation.git', 'version': config.get('package_version', '0.5.0')}
     spec.setdefault('packages', {})['MZAppFoundation'] = package
-    live_product = 'MZAppFoundationFirebase' if config['platform'] == 'iOS' else 'MZAppFoundationLive'
     base_dependencies = [d for d in target.get('dependencies', []) if d.get('package') != 'MZAppFoundation' and d.get('product', d.get('package')) not in VENDOR_PRODUCTS]
     source = '.mzappfoundation/Generated'
     sources = target.setdefault('sources', [])
     if isinstance(sources, str):
         sources = [sources]; target['sources'] = sources
     if source not in [s if isinstance(s, str) else s.get('path') for s in sources]:
-        sources.append({'path': source, 'excludes': ['upload_symbols.py', '*-Info.plist']})
+        sources.append({'path': source, 'excludes': ['*.py', '*-Info.plist']})
     info = target.setdefault('info', {'path': f'.mzappfoundation/Generated/{config["target"]}-Info.plist'})
     props = info.setdefault('properties', {})
     props.update(SAFETY)
@@ -208,25 +353,40 @@ def mutate_xcodegen(root, config):
         scene['UIApplicationSupportsMultipleScenes'] = True
         scene.setdefault('UIApplicationPreferredDefaultSceneSessionRole', 'UIWindowSceneSessionRoleApplication')
     urls = props.setdefault('CFBundleURLTypes', [])
-    if not any(config['url_scheme'] in item.get('CFBundleURLSchemes', []) for item in urls):
-        urls.append({'CFBundleURLSchemes': [config['url_scheme']]})
+    for scheme in url_schemes(config):
+        if not any(scheme in item.get('CFBundleURLSchemes', []) for item in urls):
+            urls.append({'CFBundleURLSchemes': [scheme]})
     base = target.setdefault('settings', {}).setdefault('base', {})
     base['PRODUCT_BUNDLE_IDENTIFIER'] = config['bundle_id']
     configs = target['settings'].setdefault('configs', {})
     flags = configs.setdefault('Internal', {}).get('SWIFT_ACTIVE_COMPILATION_CONDITIONS', '$(inherited)')
     if 'MZ_INTERNAL' not in flags: flags += ' MZ_INTERNAL'
     configs['Internal']['SWIFT_ACTIVE_COMPILATION_CONDITIONS'] = flags
+    if developer_settings_supported(config):
+        base['ENABLE_USER_SCRIPT_SANDBOXING'] = 'NO'
     local = copy.deepcopy(target)
     local['dependencies'] = base_dependencies + [{'package': 'MZAppFoundation', 'product': 'MZAppFoundation'}]
-    local['settings']['base'].update({'SUPPORTED_PLATFORMS': 'iphonesimulator' if config['platform'] == 'iOS' else 'xrsimulator',
+    local['settings']['base'].update({'SUPPORTED_PLATFORMS': supported_platforms(config, local=True),
                                      'SWIFT_ACTIVE_COMPILATION_CONDITIONS': '$(inherited) MZ_LOCAL'})
+    for name in spec.get('configs', {}):
+        settings = local['settings'].setdefault('configs', {}).setdefault(name, {})
+        conditions = settings.get('SWIFT_ACTIVE_COMPILATION_CONDITIONS', '$(inherited)').split()
+        if 'MZ_LOCAL' not in conditions: conditions.append('MZ_LOCAL')
+        settings['SWIFT_ACTIVE_COMPILATION_CONDITIONS'] = ' '.join(conditions)
     local.setdefault('postBuildScripts', [])[:] = [s for s in local.get('postBuildScripts', []) if s.get('name') != 'MZ Sentry Symbols']
-    target['dependencies'] = base_dependencies + [{'package': 'MZAppFoundation', 'product': live_product}]
-    target['settings']['base']['SUPPORTED_PLATFORMS'] = 'iphoneos' if config['platform'] == 'iOS' else 'xros'
+    target['dependencies'] = base_dependencies + [{'package': 'MZAppFoundation', 'product': product} for product in provider_products(config)]
+    target['settings']['base']['SUPPORTED_PLATFORMS'] = supported_platforms(config)
     target.setdefault('postBuildScripts', [])[:] = [s for s in target.get('postBuildScripts', []) if s.get('name') != 'MZ Sentry Symbols']
     if config.get('providers', {}).get('sentry_dsn'):
         target['postBuildScripts'].append({'name': 'MZ Sentry Symbols', 'script': 'python3 "$SRCROOT/.mzappfoundation/Generated/upload_symbols.py"', 'basedOnDependencyAnalysis': False})
         target['settings']['base']['ENABLE_USER_SCRIPT_SANDBOXING'] = 'NO'
+    if developer_settings_supported(config):
+        for composition in (target, local):
+            scripts = composition.setdefault('postBuildScripts', [])
+            scripts[:] = [script for script in scripts if script.get('name') != 'MZ Build Metadata']
+            scripts.append({'name': 'MZ Build Metadata', 'script': build_metadata_script(config),
+                            'basedOnDependencyAnalysis': False})
+            composition['settings']['base']['ENABLE_USER_SCRIPT_SANDBOXING'] = 'NO'
     spec['targets'][local_name] = local
     schemes = spec.setdefault('schemes', {})
     schemes[local_name] = {'build': {'targets': {local_name: 'all'}}, 'run': {'config': 'Debug'}}
@@ -239,6 +399,8 @@ def apply(root, config):
     generated = root / '.mzappfoundation/Generated'
     write(generated / 'MZBootstrap.swift', bootstrap(config))
     write(generated / 'upload_symbols.py', (REPO / 'scripts/upload_symbols.py').read_bytes())
+    if developer_settings_supported(config):
+        write(generated / 'generate_build_metadata.py', (REPO / 'scripts/generate_build_metadata.py').read_bytes())
     providers = config.get('providers', {})
     if providers.get('google_service_info'):
         source = within(root, providers['google_service_info'])
@@ -267,12 +429,13 @@ def verify(root, config):
     if config['project_type'] == 'xcodegen':
         import yaml
         project = yaml.safe_load(within(root, config['project']).read_text())
-        for name, product in [(config['target'] + 'Local', 'MZAppFoundation'),
-                              (config['target'], 'MZAppFoundationFirebase' if config['platform'] == 'iOS' else 'MZAppFoundationLive')]:
+        for name, products in [(config['target'] + 'Local', ['MZAppFoundation']),
+                               (config['target'], provider_products(config))]:
             target = project.get('targets', {}).get(name, {})
-            if not any(d.get('package') == 'MZAppFoundation' and d.get('product') == product for d in target.get('dependencies', [])):
-                errors.append(f'{name} is missing expected package product {product}')
-            expected_platform = ('iphonesimulator' if name.endswith('Local') else 'iphoneos') if config['platform'] == 'iOS' else ('xrsimulator' if name.endswith('Local') else 'xros')
+            for product in products:
+                if not any(d.get('package') == 'MZAppFoundation' and d.get('product') == product for d in target.get('dependencies', [])):
+                    errors.append(f'{name} is missing expected package product {product}')
+            expected_platform = supported_platforms(config, local=name == config['target'] + 'Local')
             if target.get('settings', {}).get('base', {}).get('SUPPORTED_PLATFORMS') != expected_platform:
                 errors.append(f'{name} has incorrect supported platforms')
     if reporting_enabled(config):

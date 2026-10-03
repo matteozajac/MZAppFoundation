@@ -67,6 +67,12 @@ struct SampleView: View {
                                                             set: { services.developerOptions.setEnabled($0) }))
                     Button("Open console", systemImage: "ladybug") { services.developerOptions.requestConsole() }
                         .disabled(!services.developerOptions.isEnabled)
+                    #if os(iOS)
+                    FoundationSettingsLink(services: services,
+                        pages: FoundationDeveloperTools.pages(services: services, reporting: SampleBootstrap.reporting))
+                    #else
+                    FoundationSettingsLink(services: services, pages: FoundationDeveloperTools.pages(services: services))
+                    #endif
                 }
                 #if os(iOS)
                 if services.developerOptions.isEnabled {

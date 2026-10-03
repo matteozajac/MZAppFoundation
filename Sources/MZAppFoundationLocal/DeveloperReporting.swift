@@ -12,12 +12,22 @@ import UIKit
 
     public init(archivePrefix: String = "bug-report", defaults: UserDefaults = .standard,
                 preferenceKey: String? = nil, store: LoggerStore = .shared,
-                metadata: @escaping @MainActor () -> [String: String] = { [:] }) {
+                metadata: @escaping @MainActor () -> [String: String] = { [:] },
+                diagnostics: (@MainActor () throws -> Data)? = nil) {
         coordinator = BugReportCoordinator(
             attachmentProvider: PulseReportAttachmentProvider(store: store), defaults: defaults,
             preferenceKey: preferenceKey ?? "\(Bundle.main.bundleIdentifier ?? "MZAppFoundation").recordRecentActivity",
-            archivePrefix: archivePrefix, metadata: metadata)
+            archivePrefix: archivePrefix, metadata: metadata, diagnostics: diagnostics)
         self.store = store
+    }
+
+    /// Captures one immutable, redacted foundation snapshot when reporting begins.
+    public convenience init(services: AppServices, archivePrefix: String = "bug-report",
+                            defaults: UserDefaults = .standard, preferenceKey: String? = nil,
+                            store: LoggerStore = .shared,
+                            metadata: @escaping @MainActor () -> [String: String] = { [:] }) {
+        self.init(archivePrefix: archivePrefix, defaults: defaults, preferenceKey: preferenceKey,
+                  store: store, metadata: metadata, diagnostics: { try services.diagnosticExport().jsonData() })
     }
 
     private let store: LoggerStore

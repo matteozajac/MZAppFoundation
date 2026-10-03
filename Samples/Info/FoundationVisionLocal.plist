@@ -24,6 +24,7 @@
 			<key>CFBundleURLSchemes</key>
 			<array>
 				<string>mzsample</string>
+				<string>mzappfoundation</string>
 			</array>
 		</dict>
 	</array>

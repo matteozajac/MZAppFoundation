@@ -33,7 +33,8 @@ import MZAppFoundationLocal
         ])
         let snapshot = ErrorSnapshot(error, file: "App/Loader.swift", function: "load()", line: 42)
         let issue = DiagnosticIssue(code: "Model loading failed", category: "model",
-                                    metadata: ["model_id": .string("sample")], error: snapshot, source: snapshot.source)
+                                    metadata: ["model_id": .string("sample"), "user_id": .string("private-user"),
+                                               "access_token": .string("private-token")], error: snapshot, source: snapshot.source)
         // Inspect the exact serializable event passed to capture, without starting a remote transport.
         let event = SentryDiagnostics.event(for: issue)
         XCTAssertEqual(event.message?.formatted, "Model loading failed")
@@ -45,6 +46,8 @@ import MZAppFoundationLocal
         XCTAssertEqual(event.context?["app_diagnostic"]?["file"] as? String, "App/Loader.swift")
         let serialized = String(describing: event.serialize())
         XCTAssertFalse(serialized.contains("private transcript"))
+        XCTAssertFalse(serialized.contains("private-user"))
+        XCTAssertFalse(serialized.contains("private-token"))
         XCTAssertTrue(serialized.contains("model_id"))
     }
 }

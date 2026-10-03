@@ -231,6 +231,51 @@ class BugReportInspectorTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             inspector.lzfse(b'garbage', limit=65536)
 
+    def test_diagnostics_snapshot_has_separate_schema_and_no_backend_verification_claim(self):
+        snapshot = {'format': 'mzappfoundation-diagnostics', 'schemaVersion': 1,
+                    'app': {'bundleIdentifier': 'test.foundation'}, 'providers': [{'projectID': 'proj_fixture'}]}
+        self.report['attachments'] = ['diagnostics.json']
+        self.report['attachmentStatus']['diagnostics'] = 'included'
+        result = inspector.inspect(self.archive([('diagnostics.json', json.dumps(snapshot))]), self.root / 'out')
+        self.assertTrue(result['diagnostics']['available'])
+        self.assertTrue(result['diagnostics']['formatValid'])
+        self.assertFalse(result['diagnostics']['backendDeliveryVerified'])
+        self.assertEqual(result['diagnostics']['schemaVersion'], 1)
+        self.assertEqual(result['warnings'], [])
+
+    def test_invalid_or_private_diagnostics_warn_without_discarding_qa_notes(self):
+        snapshots = [b'not JSON', json.dumps({'format': 'mzappfoundation-diagnostics', 'schemaVersion': True}),
+                     json.dumps({'format': 'mzappfoundation-diagnostics', 'schemaVersion': 2}),
+                     json.dumps({'format': 'mzappfoundation-diagnostics', 'schemaVersion': 1, 'apiKey': 'private'}),
+                     b' ' * (inspector.MAX_DIAGNOSTICS + 1)]
+        self.report['attachments'] = ['diagnostics.json']
+        self.report['attachmentStatus']['diagnostics'] = 'included'
+        for index, snapshot in enumerate(snapshots):
+            with self.subTest(index=index):
+                result = inspector.inspect(self.archive([('diagnostics.json', snapshot)]), self.root / str(index))
+                self.assertFalse(result['diagnostics']['available'])
+                self.assertTrue(result['warnings'])
+                self.assertFalse(any('apiKey' in warning or 'private' == warning for warning in result['warnings']))
+                self.assertTrue((Path(result['payloadDirectory']) / 'report.txt').exists())
+
+    def test_diagnostics_status_conflicts_and_missing_snapshots_are_explicit(self):
+        for index, failure in enumerate(('missing', 'excluded', 'unavailable', 'undeclared')):
+            self.report['attachments'] = ['diagnostics.json'] if failure != 'undeclared' else []
+            self.report['attachmentStatus']['diagnostics'] = failure if failure in ('excluded', 'unavailable') else 'included'
+            entries = [] if failure == 'missing' else [('diagnostics.json', '{}')]
+            result = inspector.inspect(self.archive(entries), self.root / str(index))
+            self.assertFalse(result['diagnostics']['available'])
+            self.assertTrue(result['warnings'])
+
+    def test_deep_diagnostics_structure_is_bounded(self):
+        snapshot = {'format': 'mzappfoundation-diagnostics', 'schemaVersion': 1,
+                    'nested': [[[[[[[[[[[[[[[[[[1]]]]]]]]]]]]]]]]]]}
+        self.report['attachments'] = ['diagnostics.json']
+        self.report['attachmentStatus']['diagnostics'] = 'included'
+        result = inspector.inspect(self.archive([('diagnostics.json', json.dumps(snapshot))]), self.root / 'out')
+        self.assertFalse(result['diagnostics']['available'])
+        self.assertTrue(result['warnings'])
+
 
 if __name__ == '__main__':
     unittest.main()

@@ -13,8 +13,12 @@ import SwiftUI
                 .appDeveloperTools(services.developerOptions)
                 #endif
         }
-        #if os(visionOS)
+        #if os(visionOS) || os(macOS)
         DeveloperConsoleScene(options: services.developerOptions)
+        FoundationSettingsScene(services: services, pages: FoundationDeveloperTools.pages(services: services))
+        #if os(macOS)
+            .commands { FoundationSettingsCommands(services: services) }
+        #endif
         #endif
     }
 }

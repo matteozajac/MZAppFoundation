@@ -125,6 +125,32 @@ struct ReportArchiveTests {
         #expect(ReportArchive.name(prefix: "../", id: id) == "bug-report-\(id.uuidString.lowercased())")
     }
 
+    @MainActor @Test func diagnosticsSnapshotIsIncludedInZIPAndCanBeExcluded() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let store = try LoggerStore(storeURL: root.appendingPathComponent("store"), options: [.create, .synchronous])
+        defer { try? store.close() }
+        let snapshot = Data(#"{"format":"mzappfoundation-diagnostics","schemaVersion":1,"providers":[{"projectID":"proj_fixture"}]}"#.utf8)
+        let draft = ReportDraft(report: .make(metadata: [:]), directory: root,
+                                provider: PulseReportAttachmentProvider(store: store), diagnostics: .available(snapshot))
+        draft.report.title = "Diagnostics fixture"
+        draft.includeScreenshot = false; draft.includeVideo = false; draft.includeLogs = false
+        let archive = try #require(try await draft.shareItems().first as? URL)
+        let contents = try zipContents(archive)
+        #expect(contents["diagnostics.json"] == snapshot)
+        let decoder = JSONDecoder(); decoder.dateDecodingStrategy = .iso8601
+        let included = try decoder.decode(BugReport.self, from: #require(contents["report.json"]))
+        #expect(included.attachments == ["diagnostics.json"])
+        #expect(included.attachmentStatus["diagnostics"] == "included")
+        draft.includeDiagnostics = false
+        let second = try #require(try await draft.shareItems().first as? URL)
+        let excludedContents = try zipContents(second)
+        #expect(excludedContents["diagnostics.json"] == nil)
+        let excluded = try decoder.decode(BugReport.self, from: #require(excludedContents["report.json"]))
+        #expect(excluded.attachmentStatus["diagnostics"] == "excluded")
+    }
+
     // Independent ZIP reader for the Foundation-produced archive. Parse the
     // central directory (local sizes may use data descriptors), inflate and CRC.
     private func zipContents(_ url: URL) throws -> [String: Data] {
