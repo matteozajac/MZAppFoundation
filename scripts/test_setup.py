@@ -116,9 +116,9 @@ class SetupTests(unittest.TestCase):
             config.pop('package_path')
             setup.apply(root, config)
             project = yaml.safe_load((root / 'project.yml').read_text())
-            self.assertEqual(project['packages']['MZAppFoundation']['exactVersion'], '0.6.1')
+            self.assertEqual(project['packages']['MZAppFoundation']['exactVersion'], '0.6.2')
             self.assertEqual(project['targets']['Demo']['dependencies'][0]['product'], 'MZAppFoundation')
-            self.assertIn('--foundation-version 0.6.1', setup.build_metadata_script(config))
+            self.assertIn('--foundation-version 0.6.2', setup.build_metadata_script(config))
             self.assertEqual(setup.url_schemes(dict(config, package_version='0.5.1')), ['demo'])
             self.assertFalse(setup.developer_settings_supported(dict(config, package_version='0.4.0')))
             self.assertTrue(setup.developer_settings_supported(dict(config, package_version='0.5.1')))
@@ -130,7 +130,7 @@ class SetupTests(unittest.TestCase):
             result = subprocess.run([ruby, '-rxcodeproj', '-rjson', '-e',
                 'p = Xcodeproj::Project.open(ARGV[0]); puts JSON.generate(p.root_object.package_references.map { |r| r.requirement })',
                 str(root / 'Demo.xcodeproj')], check=True, text=True, capture_output=True)
-            self.assertEqual(json.loads(result.stdout), [{'kind': 'exactVersion', 'version': '0.6.1'}])
+            self.assertEqual(json.loads(result.stdout), [{'kind': 'exactVersion', 'version': '0.6.2'}])
 
     def test_macos_setup_has_native_platforms_and_build_metadata(self):
         with tempfile.TemporaryDirectory() as directory:

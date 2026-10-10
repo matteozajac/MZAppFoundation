@@ -9,6 +9,9 @@ public struct BugRecordingSettings: View {
 
     public var body: some View {
         Toggle(BugReportStrings.text("bug_record_recent"), isOn: $coordinator.recordingEnabled)
+        Text(BugReportStrings.text("bug_record_video_description"))
+            .font(.caption)
+            .foregroundStyle(.secondary)
         LabeledContent(BugReportStrings.text("bug_recording"), value: coordinator.recordingStatus)
         if coordinator.canRetryRecording {
             Button(BugReportStrings.text("bug_retry_recording")) { coordinator.retryRecording() }

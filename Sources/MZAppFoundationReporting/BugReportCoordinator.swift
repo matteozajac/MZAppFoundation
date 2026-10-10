@@ -57,7 +57,7 @@ public final class BugReportCoordinator {
         self.preferenceKey = preferenceKey
         self.metadata = metadata
         self.diagnostics = diagnostics
-        recordingEnabled = defaults.object(forKey: preferenceKey) as? Bool ?? true
+        recordingEnabled = defaults.object(forKey: preferenceKey) as? Bool ?? false
         do {
             let files = try ReportFiles()
             files.clearAbandoned()

@@ -33,6 +33,7 @@ import UIKit
 
     private let store: LoggerStore
 
+    /// Screen video defaults off. Only set true in response to an explicit user choice.
     public var recordsRecentActivity: Bool {
         get { coordinator.recordingEnabled }
         set { coordinator.recordingEnabled = newValue }

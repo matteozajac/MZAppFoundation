@@ -8,6 +8,50 @@ import UIKit
 import MZAppFoundationLocal
 
 struct BugReporterTests {
+    @MainActor @Test func screenVideoDefaultsOffEvenWithDeveloperAccess() async throws {
+        let suite = "reporting.video.default." + UUID().uuidString
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let coordinator = BugReportCoordinator(attachmentProvider: FixtureProvider(), defaults: defaults)
+        #expect(!coordinator.recordingEnabled)
+        coordinator.update(developerMode: true, isActive: true)
+        coordinator.retryRecording()
+        await Task.yield()
+        #expect(!coordinator.isRecording)
+        #expect(!coordinator.canRetryRecording)
+        #expect(defaults.object(forKey: "BugReporter.recordRecentActivity") == nil)
+        coordinator.update(developerMode: false, isActive: false)
+    }
+
+    @MainActor @Test(arguments: [true, false]) func screenVideoPreservesExplicitChoice(enabled: Bool) throws {
+        let suite = "reporting.video.saved." + UUID().uuidString
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        defaults.set(enabled, forKey: "explicit.video")
+        let coordinator = BugReportCoordinator(attachmentProvider: FixtureProvider(), defaults: defaults,
+                                               preferenceKey: "explicit.video")
+        #expect(coordinator.recordingEnabled == enabled)
+    }
+
+    @MainActor @Test func screenVideoOptInAndRevocationPersistAcrossRelaunch() throws {
+        let suite = "reporting.video.lifecycle." + UUID().uuidString
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let key = "explicit.video"
+        let coordinator = BugReportCoordinator(attachmentProvider: FixtureProvider(), defaults: defaults,
+                                               preferenceKey: key)
+        coordinator.recordingEnabled = true
+        #expect(defaults.object(forKey: key) as? Bool == true)
+        let relaunched = BugReportCoordinator(attachmentProvider: FixtureProvider(), defaults: defaults,
+                                              preferenceKey: key)
+        #expect(relaunched.recordingEnabled)
+        relaunched.recordingEnabled = false
+        #expect(defaults.object(forKey: key) as? Bool == false)
+        let afterRevocation = BugReportCoordinator(attachmentProvider: FixtureProvider(), defaults: defaults,
+                                                  preferenceKey: key)
+        #expect(!afterRevocation.recordingEnabled)
+    }
+
     @Test func rollingRetentionKeepsBoundaryAndEnforcesByteLimit() {
         let segments: [VideoSegment] = (0..<25).map { index in
             let start = Double(index) * 5

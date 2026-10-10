@@ -34,7 +34,8 @@
 "bug_trim_start" = "Początek";
 "bug_trim_end" = "Koniec";
 "bug_trim_duration" = "Wybrano: %.1f s (maksymalnie 60)";
-"bug_record_recent" = "Nagrywaj ostatnią aktywność";
+"bug_record_recent" = "Nagrywaj obraz ekranu";
+"bug_record_video_description" = "Domyślnie wyłączone. Włącz, aby zachować do 60 sekund nagrania ekranu bez dźwięku na potrzeby zgłoszenia błędu, gdy tryb deweloperski jest aktywny.";
 "bug_recording" = "Nagrywanie";
 "bug_retry_recording" = "Wznów nagrywanie";
 "bug_recording_off" = "Wyłączone";

@@ -34,7 +34,8 @@
 "bug_trim_start" = "Start";
 "bug_trim_end" = "End";
 "bug_trim_duration" = "Selected: %.1f seconds (maximum 60)";
-"bug_record_recent" = "Record recent activity";
+"bug_record_recent" = "Record screen video";
+"bug_record_video_description" = "Off by default. Enable to keep up to 60 seconds of silent screen video for bug reports while developer mode is active.";
 "bug_recording" = "Recording";
 "bug_retry_recording" = "Retry recording";
 "bug_recording_off" = "Off";

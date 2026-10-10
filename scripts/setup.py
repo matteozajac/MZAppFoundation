@@ -22,10 +22,10 @@ SAFETY = {'FirebaseAutomaticScreenReportingEnabled': False, 'FIREBASE_ANALYTICS_
 DEFAULT_MICROPHONE = 'Record a voice message when you choose to describe a bug.'
 
 def developer_settings_supported(config):
-    return 'package_path' in config or tuple(map(int, config.get('package_version', '0.6.1').split('.'))) >= (0, 5, 0)
+    return 'package_path' in config or tuple(map(int, config.get('package_version', '0.6.2').split('.'))) >= (0, 5, 0)
 
 def short_developer_links_supported(config):
-    return 'package_path' in config or tuple(map(int, config.get('package_version', '0.6.1').split('.'))) >= (0, 5, 1)
+    return 'package_path' in config or tuple(map(int, config.get('package_version', '0.6.2').split('.'))) >= (0, 5, 1)
 
 def supported_platforms(config, local=False):
     return {'iOS': ('iphonesimulator', 'iphoneos'), 'visionOS': ('xrsimulator', 'xros'),
@@ -36,7 +36,7 @@ def build_metadata_script(config):
     if config.get('package_path'):
         command += ' --foundation-root ' + shlex.quote(config['package_path'])
     else:
-        command += ' --foundation-version ' + shlex.quote(config.get('package_version', '0.6.1'))
+        command += ' --foundation-version ' + shlex.quote(config.get('package_version', '0.6.2'))
     return command + ' --channel "$CONFIGURATION" --stamp-build-time --output "$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH/MZFoundationBuildMetadata.plist"'
 
 def provider_products(config):
@@ -196,7 +196,7 @@ def load(root, config_path):
     public_key = config.get('providers', {}).get('revenuecat_public_key')
     if public_key and not public_key.startswith('appl_'):
         raise ValueError('RevenueCat configuration requires an Apple public SDK key')
-    if 'package_path' not in config and not re.fullmatch(r'\d+\.\d+\.\d+', config.get('package_version', '0.6.1')):
+    if 'package_path' not in config and not re.fullmatch(r'\d+\.\d+\.\d+', config.get('package_version', '0.6.2')):
         raise ValueError('package_version must be an exact semantic version')
     if config.get('developer_link_host') and not all(re.fullmatch(r'[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?', label)
                                                     for label in config['developer_link_host'].split('.')):
@@ -207,7 +207,7 @@ def load(root, config_path):
     if not isinstance(config.get('bug_reporting', False), bool):
         raise ValueError('bug_reporting must be a boolean')
     if config.get('bug_reporting'):
-        if 'package_path' not in config and tuple(map(int, config.get('package_version', '0.6.1').split('.'))) < (0, 3, 0):
+        if 'package_path' not in config and tuple(map(int, config.get('package_version', '0.6.2').split('.'))) < (0, 3, 0):
             raise ValueError('Bug reporting requires MZAppFoundation 0.3.0 or later')
         if config['platform'] != 'iOS':
             raise ValueError('Bug reporting in 0.3.0 requires iOS; keep the standard console on other platforms')
@@ -340,7 +340,7 @@ def mutate_xcodegen(root, config):
     local_name = config['target'] + 'Local'
     spec.setdefault('configs', {'Debug': 'debug', 'Release': 'release'}).setdefault('Internal', 'release')
     package = {'path': config['package_path']} if config.get('package_path') else {
-        'url': 'git@github.com:matteozajac/MZAppFoundation.git', 'exactVersion': config.get('package_version', '0.6.1')}
+        'url': 'git@github.com:matteozajac/MZAppFoundation.git', 'exactVersion': config.get('package_version', '0.6.2')}
     spec.setdefault('packages', {})['MZAppFoundation'] = package
     base_dependencies = [d for d in target.get('dependencies', []) if d.get('package') != 'MZAppFoundation' and d.get('product', d.get('package')) not in VENDOR_PRODUCTS]
     source = '.mzappfoundation/Generated'
