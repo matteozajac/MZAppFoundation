@@ -9,8 +9,11 @@ import MZAppFoundationLocal
 
 struct BugReporterTests {
     @Test func rollingRetentionKeepsBoundaryAndEnforcesByteLimit() {
-        let segments = (0..<25).map { index in
-            VideoSegment(url: URL(filePath: "/\(index).mp4"), start: Double(index * 5), end: Double(index * 5 + 5), bytes: 1_000)
+        let segments: [VideoSegment] = (0..<25).map { index in
+            let start = Double(index) * 5
+            let end = start + 5
+            let url = URL(filePath: "/\(index).mp4")
+            return VideoSegment(url: url, start: start, end: end, bytes: 1_000)
         }
         let kept = VideoRetention.retained(segments, endingAt: 123)
         #expect(kept.first?.start == 60)
