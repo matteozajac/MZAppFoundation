@@ -17,4 +17,13 @@ contracts, 34 reporting contracts and 4 developer-presentation contracts. The
 release follow-up changes only these notes. The same core/tooling checks passed
 locally with Xcode 27; Roamline consumes the final exact release tag.
 
+Repeated CI runs of the release notes commit exposed a hosted-test race: the
+first Command-D test sent its action before the installed root controller's
+appearance callback supplied a first responder. The follow-up test fixture waits
+for the key window and the production responder, and stops immediately if that
+readiness requirement fails. Hosted tests use the app's library symbols instead
+of linking duplicate static library copies. All four presentation tests passed
+three consecutive local runs after that correction. This follow-up changes only
+tests, sample test linkage and these notes; the published 0.6.1 runtime is unchanged.
+
 Device provider and purchase acceptance is separate from these build/test checks.

@@ -218,8 +218,10 @@ targets:
     - target: FoundationLocal
     - package: MZAppFoundation
       product: MZAppFoundation
+      link: false
     - package: MZAppFoundation
       product: MZAppFoundationReporting
+      link: false
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.matteozajac.mzfoundation.developertests

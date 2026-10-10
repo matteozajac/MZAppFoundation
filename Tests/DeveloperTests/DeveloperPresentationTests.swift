@@ -80,6 +80,12 @@ struct DeveloperPresentationTests {
         defer { options.dismissConsole(); window.isHidden = true; previous?.makeKey() }
         try await wait { findTools(in: window.rootViewController ?? host) != nil }
         let controller = try #require(findTools(in: window.rootViewController ?? host))
+        // Installing the root container precedes UIKit's appearance callback.
+        // Let the production responder become active before sending hardware keys.
+        try await wait {
+            window.isKeyWindow
+                && (controller.isFirstResponder || controller.children.contains { $0.isFirstResponder })
+        }
         try await operation(options, window, controller)
     }
 
@@ -91,7 +97,7 @@ struct DeveloperPresentationTests {
     private func wait(_ predicate: @MainActor () -> Bool) async throws {
         let deadline = ContinuousClock.now.advanced(by: .seconds(4))
         while !predicate(), ContinuousClock.now < deadline { try await Task.sleep(for: .milliseconds(30)) }
-        #expect(predicate())
+        try #require(predicate())
     }
 
 }
