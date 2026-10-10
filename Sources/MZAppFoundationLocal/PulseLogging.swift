@@ -52,7 +52,9 @@ import Pulse
         let context = store.backgroundContext
         // Queue confinement and FIFO ordering ensure insertion precedes correction,
         // including when a caller configures a synchronous Pulse store.
-        context.performAndWait {
+        // PulseUI observes saves on the main actor. Waiting synchronously here
+        // can deadlock while that observer is merging this background save.
+        context.perform {
             do {
                 let request = NSFetchRequest<LoggerMessageEntity>(entityName: "LoggerMessageEntity")
                 request.predicate = NSPredicate(format: "rawMetadata CONTAINS %@", "mz_record_id: " + marker)
@@ -69,6 +71,12 @@ import Pulse
                 Logger(subsystem: "MZAppFoundation", category: "Pulse").error("Unable to preserve Pulse metadata formatting")
             }
         }
+    }
+
+    /// Await queued insertion/metadata repair when inspecting or exporting logs.
+    /// Ordinary logging never waits on a Core Data queue from the main actor.
+    public func flush() async {
+        await store.backgroundContext.perform {}
     }
 }
 

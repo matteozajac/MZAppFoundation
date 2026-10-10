@@ -7,7 +7,8 @@ import FirebaseCore
 @MainActor public enum FirebaseProvider {
     public static func diagnostics(googleServiceInfoPath: String?, bootstrapFailure: Bool = false,
                                    projectName: String? = nil, base: FoundationDiagnostics = .init(),
-                                   ownsRunningSDK: @escaping @MainActor () -> Bool = { false }) -> FoundationDiagnostics {
+                                   ownsRunningSDK: @escaping @MainActor () -> Bool = { false },
+                                   managesAnalytics: @escaping @MainActor () -> Bool = { false }) -> FoundationDiagnostics {
         base.replacing(.firebase) { context in
             let file = FirebaseConfigurationInspection.inspect(bundleIdentifier: context.configuration.bundleIdentifier,
                                                                path: googleServiceInfoPath)
@@ -24,7 +25,7 @@ import FirebaseCore
             let delivery = bootstrapFailure ? ProviderDeliveryState.unavailable
                 : (!context.remoteAllowed || !context.preferences.analytics
                     ? context.delivery(configured: file.state == .configured, preference: context.preferences.analytics)
-                    : (file.state == .configured && ownership == .ownedByComposition ? .enabled : .unavailable))
+                    : (file.state == .configured && (ownership == .ownedByComposition || managesAnalytics()) ? .enabled : .unavailable))
             let details = [ProviderDetail("projectName", label: "Project name", value: projectName ?? "Not supplied by app")] + file.details + [
                 ProviderDetail("coreVersion", label: "FirebaseCore version", value: version ?? "Unknown"),
                 ProviderDetail("analyticsVersion", label: "FirebaseAnalytics package pin", value: FoundationVersion.resolvedPackageVersions["firebase-ios-sdk"] ?? "Unknown")]
@@ -47,7 +48,8 @@ import FirebaseCore
     public static func diagnostics(googleServiceInfoPath: String?, projectName: String? = nil,
                                    engine: FirebaseAnalyticsEngine, base: FoundationDiagnostics = .init()) -> FoundationDiagnostics {
         diagnostics(googleServiceInfoPath: googleServiceInfoPath, projectName: projectName, base: base,
-            ownsRunningSDK: { [weak engine] in engine?.ownsRunningSDK == true })
+            ownsRunningSDK: { [weak engine] in engine?.ownsRunningSDK == true },
+            managesAnalytics: { [weak engine] in engine?.managesAnalytics == true })
             .adding(action: .init(id: "firebase.submit_verification", title: "Submit a tagged Firebase event", provider: .firebase) {
                 [weak engine] context in
                 guard let engine else { return .init(status: .unavailable, code: "firebase.provider_unavailable", message: "The Firebase provider is unavailable.") }

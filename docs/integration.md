@@ -1,8 +1,8 @@
 # Integration
 
-Requires Swift 6.2+, Xcode with iOS/visionOS 26 SDKs, and private GitHub access. Version 0.5.0 also supports macOS 15. Feature code uses the SDK-free `MZAppFoundation` core module; bootstrap and settings choose composition/UI products. Vendor SDK modules are never re-exported. SDK versions are pinned centrally.
+Requires Swift 6.2.3+, Xcode with iOS/visionOS 26 SDKs, and private GitHub access. Version 0.5.0 also supports macOS 15. Feature code uses the SDK-free `MZAppFoundation` core module; bootstrap and settings choose composition/UI products. Vendor SDK modules are never re-exported. SDK versions are pinned centrally.
 
-The products are `MZAppFoundation` (Pulse local composition), `MZAppFoundationUI` (core-only UI), and independent `MZAppFoundationRevenueCat`, `MZAppFoundationSentry`, and `MZAppFoundationFirebaseAnalytics` adapters. Existing `MZAppFoundationLive` (local + RevenueCat + Sentry) and `MZAppFoundationFirebase` (Live + iOS Firebase Analytics) remain compatibility umbrellas. Developer settings and independent adapters were introduced in 0.5.0. Setup now defaults to 0.5.1, which adds keyboard help, Command–D console access, console presentation above existing iOS sheets/alerts, and short app-specific developer links.
+The products are `MZAppFoundation` (Pulse local composition), `MZAppFoundationUI` (core-only UI), and independent `MZAppFoundationRevenueCat`, `MZAppFoundationSentry`, and `MZAppFoundationFirebaseAnalytics` adapters. Existing `MZAppFoundationLive` (local + RevenueCat + Sentry) and `MZAppFoundationFirebase` (Live + iOS Firebase Analytics) remain compatibility umbrellas. Developer settings and independent adapters were introduced in 0.5.0. Setup now defaults to 0.6.0, which adds keyboard help, Command–D console access, console presentation above existing iOS sheets/alerts, and short app-specific developer links.
 
 ## Feature code
 
@@ -105,6 +105,14 @@ RevenueCat uses `RevenueCatPurchases(key:configuration:)` plus `RevenueCatProvid
 
 `UnavailablePurchases` is the device fallback when purchases are not configured. `MockPurchases` and the separate local QA composition are explicit simulations; developer mode does not make mock entitlements production authorization. SDK-free `NoopAnalyticsEngine` and `NoopDiagnosticsEngine` are available alongside empty engine arrays.
 
+### App-owned Firebase startup and Sentry privacy
+
+Apps using Firebase App Check, Messaging or other backend services may initialize Firebase themselves, after installing their provider factories. Construct `FirebaseAnalyticsEngine(configuration: configuration, path: firebasePath, initialization: .reuseExistingDefaultApp)` only in a permitted runtime. This validates the already running default app against the supplied bundle/app/project identities and never initializes Firebase. Inject the engine through `LocalServices.make(additionalAnalytics:)`, and pass it to `FirebaseProvider.diagnostics(engine:)`. Analytics consent remains independent of backend startup. `managesAnalytics` indicates a valid Analytics binding; `ownsRunningSDK` remains false for reused apps. Replacement or identity changes block delivery and consent writes to the replacement. The default initialization mode still rejects an existing app.
+
+For app-specific Sentry privacy, pass `eventFilter:` to `SentryDiagnostics`. Its `@Sendable (Event) -> Event?` callback runs synchronously on the delivery thread, after baseline PII removal; nil drops the event. The baseline user/request/extra removal runs again after the callback. Keep the filter stateless or thread-safe, never capture actor-isolated UI, and explicitly preserve any safe marker/correlation UUID needed for manual verification. Inject the engine through `additionalDiagnostics` and its passive provider builder. Do not initialize another Sentry SDK or replace telemetry preference gates.
+
+Product event meaning, trigger points and domain-safe values belong to the app. Foundation validates the app-supplied schema and owns provider mapping, consent/runtime gates, counters and local sinks. Derive repeated allowlists from one app-owned definition. An adapter acceptance or submission is not backend ingestion.
+
 ## Build graph
 
 | Target | SDK dependencies | Default behavior |
@@ -138,7 +146,7 @@ XcodeGen projects require `xcodegen`. Native Xcode projects require Ruby and `bu
 
 Provider fields: `revenuecat_public_key`, `sentry_dsn`, `google_service_info` (app-relative plist path), `sentry_org`, `sentry_project`. Modern integrations also accept `revenuecat_project_name`, `revenuecat_project_id`, `revenuecat_app_id`, `firebase_project_name`, and `sentry_project_id`. Metadata alone does not cause SDK linkage or prove remote provisioning. Never store administrative tokens in this file. `products` contains only confirmed product definitions; provisioning is handled by the skill and records exact remote readbacks. No product catalog means no RevenueCat offering creation.
 
-Setup defaults to `package_version: "0.5.1"`; use `package_path` when developing against a local checkout. Explicitly pinned older integrations retain compatible generation and do not receive newer APIs until upgraded. Setup for 0.5.0+ supports iOS, visionOS, and macOS, generates independent provider composition, and copies the build metadata generator into the app. For 0.5.1+ or a current local checkout, it registers only the app's unique scheme and removes earlier shared-scheme entries while preserving unrelated URL types. Review and validate the target app; setup does not publish a package, distribute the app, or migrate another repository.
+Setup defaults to `package_version: "0.6.0"`; use `package_path` when developing against a local checkout. Explicitly pinned older integrations retain compatible generation and do not receive newer APIs until upgraded. Setup for 0.5.0+ supports iOS, visionOS, and macOS, generates independent provider composition, and copies the build metadata generator into the app. For 0.5.1+ or a current local checkout, it registers only the app's unique scheme and removes earlier shared-scheme entries while preserving unrelated URL types. Review and validate the target app; setup does not publish a package, distribute the app, or migrate another repository.
 
 ## Build and diagnostics evidence
 
@@ -158,7 +166,7 @@ Create `InstrumentedSession(options: services.developerOptions)` and use `data(f
 
 ## SDK compatibility
 
-Pulse is pinned to 5.2.1: 5.2.3 failed the visionOS sample build because `RichTextViewSearchToobar-ios.swift` calls `glassEffect`, which is unavailable on visionOS. Do not upgrade without both platform builds. RevenueCat 5.88.0, Sentry 9.27.0 and Firebase 12.19.2 are pinned. Firebase's `FirebaseAnalyticsCore` package product exports the `FirebaseAnalytics` Swift module.
+Pulse is pinned to 5.2.1: 5.2.3 failed the visionOS sample build because `RichTextViewSearchToobar-ios.swift` calls `glassEffect`, which is unavailable on visionOS. Do not upgrade without both platform builds. RevenueCat 5.94.0, Sentry 9.30.1 and Firebase 13.0.0 are pinned. Firebase 13.0.0 is the canonical SwiftPM release; 13.0.1 has identical SwiftPM code. Unused Firestore package traits are disabled. Firebase's `FirebaseAnalyticsCore` package product exports the `FirebaseAnalytics` Swift module.
 
 ## Structured diagnostic logging (0.2.0)
 

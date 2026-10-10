@@ -6,12 +6,13 @@ import Sentry
 import MZAppFoundationLocal
 
 @MainActor final class LoggingAdapterTests: XCTestCase {
-    func testPulsePersistsReadableErrorMetadataAndCaller() throws {
+    func testPulsePersistsReadableErrorMetadataAndCaller() async throws {
         let url = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString + ".pulse")
         let store = try LoggerStore(storeURL: url, options: [.create, .synchronous])
         let logger = PulseLogger(store: store)
         logger.error("Model loading failed", error: ReadableError(), category: "model",
                      metadata: ["model_id": .string("sample")], file: "App/Loader.swift", function: "load()", line: 42)
+        await logger.flush()
         let messages = try store.messages()
         XCTAssertEqual(messages.count, 1)
         let message = try XCTUnwrap(messages.first)
@@ -24,6 +25,20 @@ import MZAppFoundationLocal
         XCTAssertEqual(message.file, "Loader.swift")
         XCTAssertEqual(message.function, "load()")
         XCTAssertEqual(message.line, 42)
+    }
+
+    func testAsynchronousPulseStoreRetainsEveryReadableEntry() async throws {
+        let url = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString + ".pulse")
+        let store = try LoggerStore(storeURL: url, options: [.create])
+        let logger = PulseLogger(store: store)
+        for index in 0..<20 {
+            logger.log(LogEntry("Operation failed", metadata: ["stage": .string("stage \(index)")]))
+        }
+        await logger.flush()
+        let messages = try store.messages()
+        XCTAssertEqual(messages.count, 20)
+        XCTAssertEqual(Set(messages.compactMap { $0.metadata["stage"] }), Set((0..<20).map { "stage \($0)" }))
+        XCTAssertTrue(messages.allSatisfy { $0.metadata["mz_record_id"] == nil })
     }
 
     func testSentryPayloadContainsExceptionAndSeparateContext() throws {

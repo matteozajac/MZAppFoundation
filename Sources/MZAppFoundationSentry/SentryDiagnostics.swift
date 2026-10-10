@@ -3,6 +3,9 @@ import MZAppFoundation
 import Sentry
 
 @MainActor public final class SentryDiagnostics: DiagnosticsEngine {
+    /// Additional app-owned privacy filtering. Called on Sentry's delivery thread.
+    /// Returning nil drops the event; baseline PII removal always remains applied.
+    public typealias EventFilter = @Sendable (Event) -> Event?
     private static weak var owner: SentryDiagnostics?
     public static var ownership: ProviderOwnership {
         guard SentrySDK.isEnabled else { return .notInitialized }
@@ -32,13 +35,15 @@ import Sentry
     private let dsn: String
     private var gate: SentryTransportGate?
     private let cache: URL
+    private let eventFilter: EventFilter?
 
-    public init(dsn: String, configuration: AppConfiguration) throws {
+    public init(dsn: String, configuration: AppConfiguration, eventFilter: EventFilter? = nil) throws {
         guard SentryProvider.isValidDSN(dsn) else {
             throw BootstrapFailure.invalidSentryDSN
         }
         guard !SentrySDK.isEnabled else { throw BootstrapFailure.configurationConflict }
         self.dsn = dsn; self.configuration = configuration
+        self.eventFilter = eventFilter
         cache = URL.cachesDirectory.appending(path: configuration.bundleIdentifier + ".sentry")
     }
     public func setEnabled(_ enabled: Bool) {
@@ -86,15 +91,27 @@ import Sentry
         options.sessionReplay.onErrorSampleRate = 0
         #endif
         options.shutdownTimeInterval = 0
+        let eventFilter = self.eventFilter
         options.beforeSend = { event in
             guard gate.allowsDelivery else { return nil }
-            event.user = nil; event.request = nil; event.extra = nil
-            return event
+            let filtered = Self.filteredEvent(event, filter: eventFilter)
+            return gate.allowsDelivery ? filtered : nil
         }
         self.gate = gate
         Self.owner = self
         SentrySDK.start(options: options)
         SentrySDK.setUser(nil)
+    }
+    /// Pure delivery mapping, also exercised without initializing Sentry.
+    nonisolated static func filteredEvent(_ event: Event, filter: EventFilter?) -> Event? {
+        event.user = nil; event.request = nil; event.extra = nil
+        let filtered: Event
+        if let filter {
+            guard let result = filter(event) else { return nil }
+            filtered = result
+        } else { filtered = event }
+        filtered.user = nil; filtered.request = nil; filtered.extra = nil
+        return filtered
     }
     public func record(_ issue: DiagnosticIssue) -> EngineResult {
         guard ownsRunningSDK else { return .ignored }

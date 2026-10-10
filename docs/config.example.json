@@ -6,7 +6,7 @@
   "url_scheme": "myapp",
   "platform": "iOS",
   "deployment_target": "26.0",
-  "package_version": "0.5.1",
+  "package_version": "0.6.0",
   "bug_reporting": true,
   "report_archive_prefix": "myapp",
   "microphone_usage_description": "Record a voice message when you choose to describe a bug.",

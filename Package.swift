@@ -1,4 +1,4 @@
-// swift-tools-version: 6.2
+// swift-tools-version: 6.2.1
 import PackageDescription
 
 let package = Package(
@@ -17,9 +17,9 @@ let package = Package(
     ],
     dependencies: [
         .package(url: "https://github.com/kean/Pulse.git", exact: "5.2.1"),
-        .package(url: "https://github.com/getsentry/sentry-cocoa.git", exact: "9.27.0"),
-        .package(url: "https://github.com/RevenueCat/purchases-ios.git", exact: "5.88.0"),
-        .package(url: "https://github.com/firebase/firebase-ios-sdk.git", exact: "12.19.2")
+        .package(url: "https://github.com/getsentry/sentry-cocoa.git", exact: "9.30.1"),
+        .package(url: "https://github.com/RevenueCat/purchases-ios.git", exact: "5.94.0"),
+        .package(url: "https://github.com/firebase/firebase-ios-sdk.git", exact: "13.0.0", traits: [])
     ],
     targets: [
         .target(name: "MZAppFoundation", path: "Packages/Core/Sources/MZAppFoundation"),

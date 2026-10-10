@@ -37,3 +37,8 @@ jobs:
           python3 scripts/audit_binary.py DerivedData/VisionLocal/Build/Products/Debug-xrsimulator/FoundationVisionLocal.app --local
           xcodebuild -project Samples/MZFoundationSamples.xcodeproj -scheme FoundationDevice -configuration Internal -destination 'generic/platform=iOS' CODE_SIGNING_ALLOWED=NO build
           xcodebuild -project Samples/MZFoundationSamples.xcodeproj -scheme FoundationVisionDevice -configuration Internal -destination 'generic/platform=visionOS' CODE_SIGNING_ALLOWED=NO build
+      - name: Adapter, reporting and developer-access contracts
+        run: |
+          for scheme in FoundationAdapterTests FoundationReportingTests FoundationDeveloperTests; do
+            xcodebuild -project Samples/MZFoundationSamples.xcodeproj -scheme "$scheme" -destination 'platform=iOS Simulator,name=iPhone 17 Pro' -parallel-testing-enabled NO -collect-test-diagnostics never CODE_SIGNING_ALLOWED=YES CODE_SIGN_IDENTITY=- test
+          done
