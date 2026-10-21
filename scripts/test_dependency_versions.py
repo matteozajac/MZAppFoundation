@@ -20,5 +20,5 @@ class DependencyVersionsTests(unittest.TestCase):
     def test_manifest_drift_and_missing_dependency_fail(self):
         releases = {repo: {'tag_name': pin} for repo, (pin, _) in versions.PROVIDERS.items()}
         manifest = (Path(__file__).resolve().parents[1] / 'Package.swift').read_text()
-        self.assertFalse(versions.check(manifest.replace('9.30.1', '9.27.0'), releases)[1]['accepted'])
+        self.assertFalse(versions.check(manifest.replace('9.30.2', '9.27.0'), releases)[1]['accepted'])
         self.assertFalse(any(item['accepted'] for item in versions.check('', releases)))

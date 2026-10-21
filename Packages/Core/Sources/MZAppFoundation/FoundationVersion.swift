@@ -4,7 +4,7 @@ public enum FoundationVersion {
     public static let current = "0.6.2"
     public static let resolvedPackageVersions: [String: String] = [
         "app-check": "12.0.0",
-        "firebase-ios-sdk": "13.0.0",
+        "firebase-ios-sdk": "13.0.1",
         "google-ads-on-device-conversion-ios-sdk": "3.7.0",
         "googleappmeasurement": "13.0.1",
         "googledatatransport": "10.1.1",
@@ -15,7 +15,7 @@ public enum FoundationVersion {
         "nanopb": "2.30910.1",
         "promises": "2.4.1",
         "pulse": "5.2.1",
-        "purchases-ios": "5.94.0",
-        "sentry-cocoa": "9.30.1"
+        "purchases-ios": "5.96.0",
+        "sentry-cocoa": "9.30.2"
     ]
 }

@@ -97,7 +97,9 @@ The platform columns describe the APIs in this checkout, not device or provider 
 | Root: `MZAppFoundationLive` | Compatibility composition: local + RevenueCat + Sentry | iOS, visionOS, macOS |
 | Root: `MZAppFoundationFirebase` | Compatibility composition: Live + Firebase Analytics | Analytics on iOS; Live composition elsewhere |
 
-The root manifest pins Pulse 5.2.1, RevenueCat 5.94.0, Sentry 9.30.1, and Firebase 13.0.0. Consult the manifest and resolved files for the checkout you actually use.
+The root manifest pins Pulse 5.2.1, RevenueCat 5.96.0, Sentry 9.30.2, and Firebase 13.0.1. Consult the manifest and resolved files for the checkout you actually use.
+
+Pulse 5.2.3 cannot compile its search toolbar for visionOS. The [upstream fix](https://github.com/kean/Pulse/pull/386) is merged but is not in an official release, so this package retains 5.2.1 until a fixed release can be validated.
 
 Developer mode controls access to local tools. It does not grant purchase access or change remote delivery preferences. Event/property allowlists and key redaction reduce accidental exposure; apps must still keep private content out of messages, values, and URL paths.
 

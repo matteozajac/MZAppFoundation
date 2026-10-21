@@ -1,9 +1,13 @@
 name: Validate
 on:
   push:
+    branches: [main]
   pull_request:
 permissions:
   contents: read
+concurrency:
+  group: validate-${{ github.ref }}
+  cancel-in-progress: true
 jobs:
   core-and-setup:
     runs-on: macos-26
