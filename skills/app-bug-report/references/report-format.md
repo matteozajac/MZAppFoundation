@@ -30,9 +30,9 @@ The `.pulse` file is a SQLite document, **not a ZIP or plain text**. Its `ZPULSE
 - `info`: archive information as JSON.
 - 40-character hex keys: external body blobs; may themselves be LZFSE-compressed.
 
-The helper keeps the native file intact, emits the decoded `logs.sqlite`, schema and per-table JSONL, and decodes body blobs. It reads SQLite in read-only immutable mode. See the pinned Pulse source under DerivedData `SourcePackages/checkouts/Pulse/Sources/Pulse/LoggerStore/` (`LoggerStore.swift`, `LoggerStore+Model.swift`, `LoggerStore+Entities.swift`) when the dependency/schema changes.
+The helper keeps the native file intact, emits the decoded `logs.sqlite`, schema and per-table JSONL, and decodes body blobs. It reads SQLite in read-only immutable mode. When the dependency/schema changes, locate the app's resolved Pulse checkout using its Xcode/SwiftPM build settings and lockfile, then inspect `Sources/Pulse/LoggerStore/` (`LoggerStore.swift`, `LoggerStore+Model.swift`, `LoggerStore+Entities.swift`). Do not assume a shared DerivedData path or that a newer checkout matches the reporting build.
 
-Useful tables/joins (all foreign keys refer to `Z_PK`):
+Useful tables/joins: relationship foreign keys refer to `Z_PK`. The `ZSESSION` fields are UUID values instead: join message/task `ZSESSION` to `ZLOGGERSESSIONENTITY.ZID`, not its `Z_PK`.
 
 | Table | Relevant fields |
 | --- | --- |

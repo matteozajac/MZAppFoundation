@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Report a security vulnerability privately
+    url: https://github.com/matteozajac/MZAppFoundation/blob/main/SECURITY.md
+    about: Follow the private reporting instructions and verified email fallback. Do not disclose vulnerabilities or secrets in a public issue.

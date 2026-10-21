@@ -1,34 +1,58 @@
-# Adopting existing apps
+# Migrating an existing app
 
-No existing app was migrated in the initial delivery. Perform one app migration at a time with its own behavior checks and release policy.
+Adopt the package in one app at a time. Keep the app's behavior, privacy policy, purchase rules, backend ownership, and release process explicit throughout the change. This guide describes a workflow; it does not certify a migration or authorize remote provisioning.
 
-- **TwinGlyph:** retain game-specific access rules and `TwinGlyphPurchaseService` presentation/recovery policy; replace its provider with the shared purchases interface. Map `full_access` explicitly. Preserve its URL scheme, and migrate the existing developer preference key deliberately. Public Pulse inclusion changes its current binary policy. Keep RealityKit/Crown and Game Center outside this package.
-- **Masseter:** retain typed event schemas and channel-specific preferences; replace provider implementations and composition. Do not move health/private data into generic metadata. Its watch telemetry relay remains app-owned.
-- **Second Take:** preserve its off-by-default analytics and diagnostics policy and restricted technical event vocabulary. Do not enable automatic crash reporting merely because the package's new-app default permits it: use a diagnostics adapter/policy matching the app's approved contract before migration. Rehearsal text never enters logs. Ads and purchase access rules remain app-owned.
-- **Roamline:** retain analytics privacy allowlists, structured categories and app-specific network redaction. Move Pulse setup and provider fan-out into the package; preserve watch/phone and playback behavior. Keep existing archive symbol verification requirements until shared verification proves equivalent.
-- **JoinOurDay:** preserve backend Firebase initialization for Auth/Firestore/Functions/App Check, and existing billing identity binding. The package owns Analytics only. Reconcile singleton ownership and remove direct SDK calls from the local target. Preserve existing deep-link handling and keep work within the JoinOurDay team.
+## Inventory before editing
 
-Migrate by adapting app events and domain protocols to package-owned values first, replacing initialization second, removing duplicate package dependencies third, then proving local binary isolation and device behavior. Never remove an SDK dependency still required by an app-owned backend feature just to make an audit pass. Report that residual dependency precisely.
+Record the app's supported platforms and deployment targets, pinned dependencies, entrypoints, build configurations, and test targets. This checkout requires Swift 6.2, iOS/visionOS 26, or macOS 15. Resolve a lower deployment target or conflicting vendor pin before integrating.
 
-## JoinOurDay bug reporting
+Find existing analytics, diagnostics, logging, purchase, and Firebase initialization. Note network instrumentation, redaction rules, user identity binding, persisted preferences, custom URL schemes, developer access, and report attachments. Separate Firebase Analytics ownership from app-owned Auth/Firestore/Functions/App Check or other backend features.
 
-JoinOurDay's local `Packages/BugReporter` capture, rolling cache, screenshot, voice narration and ZIP logic already exists in `MZAppFoundationReporting`; the Pulse adapter lives in `MZAppFoundationLocal`. A future migration should keep one shared reporter and route both shake/console access and foundation settings through it. This manual instance replaces use of a generated reporter:
+Document the current event allowlist, remote delivery defaults, purchase/restore semantics, and handling of pending, offline, revoked, or unverifiable entitlements. Account for extensions, companion apps, background work, and multiple windows. These contracts remain app-owned.
+
+## Migrate in small steps
+
+1. Adapt app events and domain protocols to `AnalyticsEvent`, `TelemetryValue`, `PurchaseProviding`, and other core interfaces. Keep feature behavior and presentation independent of SDKs.
+2. Build a single app-lifetime composition. Start with local or injected test engines; explicitly use `UnavailablePurchases` when no real purchase provider is configured. Use `MockPurchases` only for declared simulations.
+3. Replace initialization and fan-out deliberately. Remove competing ownership of vendor singletons only after confirming no remaining app feature needs it. Keep identity binding and sign-out behavior consistent with the host app.
+4. Carry over the app's existing delivery preferences. A package initializer's default is not permission to enable analytics or diagnostics in a migrated app. Preserve consent persistence and revocation behavior.
+5. Remove duplicate package references only after tracing every consumer. A backend SDK still required by the app is a residual dependency to document, not a reason to delete backend functionality.
+6. Review generated project changes and wire the entrypoint and scenes. Run static verification, build/test affected targets, inspect local binaries, then perform the device and provider checks relevant to the app.
+
+Use the [integration guide](integration.md) for composition and optional setup commands. Setup can modify build configurations, dependencies, URL registrations, generated Info.plist values, and build phases. Review custom xcconfigs, target dependencies, script phases, synchronized groups, and extensions rather than assuming generated verification covers them.
+
+## Developer access and links
+
+The current preference key is `mzappfoundation.developer.enabled`, scoped to the supplied defaults store. `DeveloperOptions(configuration:defaults:legacyPreferenceKeys:)` supports deliberate migration of older app-specific preference keys. Preserve a user's explicit saved off choice.
+
+Choose the app's unique registered URL scheme and preserve unrelated handlers. Current links use `myapp://developer/enable` and `myapp://developer/disable`. Older shared-scheme and long routes should not be retained as competing entrypoints. Check settings navigation, keyboard actions, sheets, and multi-window presentation in the host app. Developer access controls tools, not telemetry permission or purchase access.
+
+## Replacing an existing iOS reporter
+
+The reporting module provides a rolling silent screen cache, screenshot, optional voice note, report ZIP, and native share UI. The Pulse attachment adapter lives in `MZAppFoundationLocal`. Reuse one reporting instance for both the tools modifier and settings pages:
 
 ```swift
+#if os(iOS)
+import MZAppFoundation
 import MZAppFoundationLocal
 
-@MainActor enum AppInfrastructure {
-    static let services = MZBootstrap.services
-    static let reporting = DeveloperReporting(
+@MainActor
+func migratedReporting(services: AppServices) -> DeveloperReporting {
+    DeveloperReporting(
         services: services,
-        archivePrefix: "jod-ios",
-        preferenceKey: "BugReporter.recordRecentActivity"
+        archivePrefix: "myapp",
+        preferenceKey: "com.example.myapp.recordRecentActivity"
     )
 }
+#endif
 ```
 
-Use `.appDeveloperTools(AppInfrastructure.services.developerOptions, reporting: AppInfrastructure.reporting)` on the primary iOS window and `FoundationDeveloperTools.pages(services: AppInfrastructure.services, reporting: AppInfrastructure.reporting)` for its settings. Retaining the `jod-ios` prefix preserves existing report names; retaining the legacy recording key preserves an explicit saved off choice. Replace the app's global `UIWindow` shake override when adopting the scoped modifier, and preserve the existing microphone purpose text and QA build gates.
+Replace the example prefix and preference key with the existing app's values if preserving filenames or a saved recording choice matters. Pass this instance to `.appDeveloperTools(services.developerOptions, reporting: reporting)` and `FoundationDeveloperTools.pages(services: services, reporting: reporting)`. A generated `MZBootstrap.reporting` may supply that instance instead; do not create both.
 
-Log capture and exclusions remain host-owned. Preserve JoinOurDay's existing Pulse network instrumentation, excluded hosts and logging policy when replacing its attachment adapter. Reporting exports the supplied store; it does not recreate that host configuration or automatically upload reports.
+Replace a legacy global shake override when adopting the scoped modifier, and preserve an accurate microphone purpose string and appropriate build/access gates. Keep the app's Pulse network exclusions, store selection, and attachment policy. Sharing the same store exports that configuration's logs; the reporter does not recreate host instrumentation or automatically upload reports.
 
-Resolve deployment and dependency differences before changing the app: JoinOurDay's local reporter targets iOS 18.2 and pins Pulse 5.2.3, while the Foundation root package requires iOS 26 and pins Pulse 5.2.1 for its supported platforms. Choose compatible app/package targets and one Pulse version deliberately, then validate affected platforms and physical-device recording behavior. These notes do not migrate JoinOurDay or change either package's deployment target or pin.
+Compare the old reporter's minimum OS, dependencies, recording format, consent/defaults, and archive schema. Capture and microphone behavior need separate device validation; compilation alone cannot establish parity.
+
+## Migration acceptance
+
+Use [verification](verification.md) to select checks. Record separately what was established by source review, unit tests, simulator UI, binary inspection, physical hardware, and provider dashboards. Include exact app/package revisions and unresolved dependencies. A successful local build does not prove real purchase/restore, remote ingestion, symbolication, report delivery, or a release.

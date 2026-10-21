@@ -116,6 +116,8 @@ class SetupTests(unittest.TestCase):
             config.pop('package_path')
             setup.apply(root, config)
             project = yaml.safe_load((root / 'project.yml').read_text())
+            self.assertEqual(project['packages']['MZAppFoundation']['url'],
+                             'https://github.com/matteozajac/MZAppFoundation.git')
             self.assertEqual(project['packages']['MZAppFoundation']['exactVersion'], '0.6.2')
             self.assertEqual(project['targets']['Demo']['dependencies'][0]['product'], 'MZAppFoundation')
             self.assertIn('--foundation-version 0.6.2', setup.build_metadata_script(config))
@@ -271,12 +273,17 @@ class SetupTests(unittest.TestCase):
             config.update(project_type='native', project='Demo.xcodeproj', package_version='0.2.0')
             del config['package_path']
             setup.apply(root, config)
+            subprocess.run([os.environ.get('RUBY', 'ruby'), '-rxcodeproj', '-e',
+                'p = Xcodeproj::Project.open(ARGV[0]); p.root_object.package_references.first.repositoryURL = "git@github.com:matteozajac/MZAppFoundation.git"; p.save',
+                str(root / 'Demo.xcodeproj')], check=True, capture_output=True)
             config.update(package_version='0.3.0', bug_reporting=True)
             setup.apply(root, config)
             result = subprocess.run([os.environ.get('RUBY', 'ruby'), '-rxcodeproj', '-rjson', '-e',
-                'p = Xcodeproj::Project.open(ARGV[0]); puts JSON.generate(p.root_object.package_references.map(&:requirement))',
+                'p = Xcodeproj::Project.open(ARGV[0]); puts JSON.generate(p.root_object.package_references.map { |r| {url: r.repositoryURL, requirement: r.requirement} })',
                 str(root / 'Demo.xcodeproj')], check=True, text=True, capture_output=True)
-            self.assertEqual(json.loads(result.stdout), [{'kind': 'exactVersion', 'version': '0.3.0'}])
+            self.assertEqual(json.loads(result.stdout), [{
+                'url': 'https://github.com/matteozajac/MZAppFoundation.git',
+                'requirement': {'kind': 'exactVersion', 'version': '0.3.0'}}])
 
     def test_reporting_configuration_validation(self):
         with tempfile.TemporaryDirectory() as directory:

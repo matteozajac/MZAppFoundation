@@ -1,17 +1,21 @@
 # Integration
 
-Requires Swift 6.2.3+, Xcode with iOS/visionOS 26 SDKs, and private GitHub access. Version 0.5.0 also supports macOS 15. Feature code uses the SDK-free `MZAppFoundation` core module; bootstrap and settings choose composition/UI products. Vendor SDK modules are never re-exported. SDK versions are pinned centrally.
+This checkout requires Swift 6.2.3 in Swift 6 language mode and targets iOS 26+, visionOS 26+, and macOS 15+. Its `VERSION` and setup default are `0.6.2`. Use the manifests and source at your app's pinned revision when integrating another release.
 
-The products are `MZAppFoundation` (Pulse local composition), `MZAppFoundationUI` (core-only UI), and independent `MZAppFoundationRevenueCat`, `MZAppFoundationSentry`, and `MZAppFoundationFirebaseAnalytics` adapters. Existing `MZAppFoundationLive` (local + RevenueCat + Sentry) and `MZAppFoundationFirebase` (Live + iOS Firebase Analytics) remain compatibility umbrellas. Developer settings and independent adapters were introduced in 0.5.0. Setup now defaults to 0.6.2. Modern integrations include keyboard help, Command–D console access, console presentation above existing iOS sheets/alerts, and short app-specific developer links.
+See the [README](../README.md) for SwiftPM installation, the full product/platform matrix, and a compiling dependency-free example. The root `MZAppFoundation` **product** includes the Pulse local composition; the `MZAppFoundation` **module** contains SDK-independent interfaces. `Packages/Core` is a separate, local-path package with no third-party dependencies. Do not add both manifests to one target graph.
 
 ## Feature code
+
+Inject protocols into app features instead of importing vendor SDKs:
 
 ```swift
 import MZAppFoundation
 
-@MainActor final class CheckoutModel {
+@MainActor
+final class CheckoutModel {
     private let purchases: any PurchaseProviding
     private let analytics: any AnalyticsTracking
+
     init(purchases: any PurchaseProviding, analytics: any AnalyticsTracking) {
         self.purchases = purchases
         self.analytics = analytics
@@ -19,91 +23,110 @@ import MZAppFoundation
 }
 ```
 
-App events conform to `AnalyticsEvent` and are registered in `TelemetrySchema`. Properties are typed values; undeclared events/properties are dropped. Do not include private data in declared strings, diagnostic codes, or log messages: key filtering is not semantic content classification. Purchase errors use `PurchaseFailure`; ownership uses `EntitlementState`. Apps own paywall UI and map entitlements into their own business rules.
+Events conform to `AnalyticsEvent` or use `TelemetryEvent`. Register their names and allowed property keys in `TelemetrySchema`; unknown events are rejected and undeclared properties are dropped. Properties use `TelemetryValue`. Key filtering does not inspect the meaning of a value: never put private content in allowed strings, diagnostic codes, log messages, or URL paths.
 
-## Bootstrap and scenes
+Apps own paywalls, product definitions, and the mapping from `EntitlementState` to feature access. `UnavailablePurchases` expresses an absent purchase provider. `MockPurchases` is an explicit simulation for local development or tests, not production purchase authorization.
 
-Run setup against `.mzappfoundation/config.json` (copy `config.example.json` and replace identifiers). Bootstrap/entrypoint imports `MZAppFoundationLocal` and selected adapter modules. Feature files import just `MZAppFoundation`. Modern setup selects SDK products only for supplied provider configuration; older pinned integrations retain their compatible umbrella composition.
+## Manual local composition
 
-For the iOS reporting path below, set `bug_reporting: true` in setup configuration. Setup generates one `MZBootstrap.reporting` instance and verifies the host's `NSMicrophoneUsageDescription`. Pass that instance to the modifier and reporting-aware settings pages to get the Ladybug action, recent screen activity and report ZIP. Without reporting configuration, keep `.appDeveloperTools(services.developerOptions)` and `FoundationDeveloperTools.pages(services:)` for the compatible console-only interface. Reporting capture is available on iOS only.
+Link the root `MZAppFoundation` product, then construct one services object for the app process:
 
 ```swift
 import MZAppFoundation
 import MZAppFoundationLocal
-import SwiftUI
 
-@main struct MyApp: App {
-    private let services = MZBootstrap.services
-    var body: some Scene {
-        WindowGroup {
-            ContentView(services: services)
-                #if os(iOS)
-                .appDeveloperTools(services.developerOptions, reporting: MZBootstrap.reporting)
-                #else
-                .appDeveloperTools(services.developerOptions)
-                #endif
-        }
-        #if os(visionOS) || os(macOS)
-        DeveloperConsoleScene(options: services.developerOptions)
-        FoundationSettingsScene(
-            services: services,
-            pages: FoundationDeveloperTools.pages(services: services)
-        )
-        #if os(macOS)
-            .commands { FoundationSettingsCommands(services: services) }
-        #endif
-        #endif
-    }
+@MainActor
+func makeLocalServices() -> AppServices {
+    LocalServices.make(
+        configuration: AppConfiguration(
+            bundleIdentifier: "com.example.myapp",
+            urlScheme: "myapp",
+            environment: .local,
+            preferences: .init(analytics: false, diagnostics: false)
+        ),
+        schema: TelemetrySchema(events: ["app_opened": []]),
+        purchases: UnavailablePurchases()
+    )
 }
 ```
 
-Use exactly one services composition per app process. Identical repeated live bootstrap returns the original object; change delivery through `services.telemetry.updatePreferences`, not by creating another composition. Persist delivery preferences in app-owned settings when needed and supply them at launch. Diagnostic revocation cancels the Sentry transport before closing the SDK, then removes its dedicated cache. Local logs remain available independently.
+`LocalServices.make` retains Pulse logging and local telemetry. Remote delivery preferences do not disable local logging. Supply an app-owned `UserDefaults` store or `RedactionPolicy` when needed. Keep feature code on `services.analytics`, `services.diagnostics`, `services.logger`, and `services.purchases`.
 
-Register the developer tools modifier on the principal app scene. Multi-window apps should choose their active primary scene for presentation. On iOS, a scoped responder handles shake and Command–D, including while an app sheet is open. The console appears in a separate window in that scene; closing it restores the original window with its sheet or alert still presented. Apps with custom responders or text input should verify their responder-chain behavior. An explicit Settings button can call `requestConsole()`. visionOS uses one console scene identifier and opens it on first launch when enabled; closing the console does not reopen it on ordinary scene updates.
+## Developer tools and scenes
 
-Add `FoundationSettingsLink(services:pages:)` to the app's `List` or `Form`. On iOS with reporting enabled, use `FoundationDeveloperTools.pages(services: services, reporting: MZBootstrap.reporting)` so the Pulse console entry opens the same reporter. Automatic presentation is an iOS sheet and a macOS/visionOS window with sidebar navigation; the latter requires `FoundationSettingsScene`. Pass the same app-owned pages to the link and scene. `presentation: .sheet` opts into sheet presentation without a settings scene. macOS `FoundationSettingsCommands` supplies Command–D for the console, Option–Command–L as an alias, and Control–Option–Command–D for settings. The settings entry, content, and custom destinations are gated by developer access; disabling/expiry dismisses presented content.
+Apply `.appDeveloperTools(services.developerOptions)` to the primary SwiftUI view. Add `FoundationSettingsLink(services:pages:)` to an app `List` or `Form`, using `FoundationDeveloperTools.pages(services:)` for built-in pages.
 
-Add `FoundationKeyboardShortcutsLink(options: services.developerOptions, sections: appShortcuts)` to ordinary settings for help that remains readable with developer mode off. The package supplies its built-in developer shortcuts and the shared list UI; apps inject `FoundationKeyboardShortcutSection` values describing reader or other feature shortcuts. Bind feature actions with each `FoundationKeyboardShortcut.shortcut` so help and actions use the same definition. Help descriptions alone do not install those actions. Pass these sections through `keyboardShortcutSections:` to `FoundationSettingsLink`, `FoundationSettingsView`, and `FoundationSettingsScene`. The settings scene includes the help window on macOS/visionOS; `FoundationKeyboardShortcutsScene(options:sections:)` can also be registered independently, or the help link can use `presentation: .sheet`. Read [developer settings](developer-settings.md) for the full API and example.
+On macOS and visionOS, register `DeveloperConsoleScene(options:)` and `FoundationSettingsScene(services:pages:)` in the `App` scene body for window presentation. Pass the same page definitions to the settings link and scene. The link's `presentation: .sheet` can instead use sheet presentation. On macOS, `.commands { FoundationSettingsCommands(services: services) }` adds console and settings commands to the settings scene. See [developer settings](developer-settings.md) for complete scene, keyboard-help, and custom-page examples.
 
-## Independent adapter composition
+The scoped iOS modifier handles shake and Command–D console requests. Check responder behavior in apps with custom text input, multiple windows, sheets, or alerts. Register the modifier on the scene that should own presentation. An explicit button can call `services.developerOptions.requestConsole()`.
 
-`LocalServices.make` can retain Pulse while accepting `additionalAnalytics`, `additionalDiagnostics`, and an injected purchase provider. Its telemetry runtime/preference gates still apply to remote engines. Construct SDK adapters only in a permitted runtime, pass each owned adapter to its diagnostic builder, and keep one app-lifetime composition:
+Developer access defaults to enabled outside production unless a saved choice overrides it. `DeveloperOptions.preferenceKey` is `mzappfoundation.developer.enabled`, scoped to the supplied defaults store. Session and timed access do not persist an enabled state into the next launch. Developer access does not alter telemetry permissions or purchase verification.
+
+Register an app-specific URL scheme. `DeveloperDeepLink.url(for:scheme:)` creates `myapp://developer/enable` or `myapp://developer/disable`; the shared `mzappfoundation` scheme and legacy long routes are rejected by the current API. The handler rejects extra credentials, ports, queries, fragments, and alternate paths. Preserve unrelated app deep links when adding this handler.
+
+### iOS report sharing
+
+The optional iOS reporting APIs provide screenshots, recent silent screen activity, optional voice notes, Pulse attachments, and report ZIP sharing. They do not automatically upload reports. Keep one `DeveloperReporting` instance beside the services composition:
+
+```swift
+#if os(iOS)
+import MZAppFoundation
+import MZAppFoundationLocal
+
+@MainActor
+func makeReporting(services: AppServices) -> DeveloperReporting {
+    DeveloperReporting(services: services, archivePrefix: "myapp")
+}
+#endif
+```
+
+Screen video recording defaults off in 0.6.2. The user enables **Record screen video** explicitly in Developer Settings; developer access and local/internal builds do not opt the user in. Screenshots, logs, and manual voice notes remain available with video disabled.
+
+Pass that same instance to `.appDeveloperTools(services.developerOptions, reporting: reporting)` and `FoundationDeveloperTools.pages(services: services, reporting: reporting)`. The host must supply an accurate `NSMicrophoneUsageDescription` before enabling voice notes. Capture behavior and microphone permission need physical-device checks; a build is not that evidence. Follow [bug reporting](bug-reporting.md) for recording limits, archive contents, and lifecycle details.
+
+## Optional provider adapters
+
+Link each configured adapter product explicitly. Construct remote adapters only when `RuntimeSafety.permitsRemote(environment:)` allows it. The runtime gate blocks simulator, local, preview, and recognized test processes; current delivery preferences additionally gate remote engine delivery. Persist those preferences in app-owned settings and update `services.telemetry.updatePreferences(...)` instead of recreating the composition.
+
+`LocalServices.make` accepts an injected purchase provider, `additionalAnalytics`, `additionalDiagnostics`, and `foundationDiagnostics`. For example, the Sentry product can supply a remote diagnostics engine while retaining local Pulse logs:
 
 ```swift
 import MZAppFoundation
 import MZAppFoundationLocal
 import MZAppFoundationSentry
 
-@MainActor func makeServices(configuration: AppConfiguration, schema: TelemetrySchema,
-                            appSentryDSN: String) -> AppServices {
-    let project = ProviderProjectIdentity(name: "My app", projectID: "1234")
-    var inventory = SentryProvider.diagnostics(dsn: appSentryDSN, project: project)
-    var remoteDiagnostics: [any DiagnosticsEngine] = []
+@MainActor
+func makeServices(configuration: AppConfiguration, schema: TelemetrySchema,
+                  appSentryDSN: String) -> AppServices {
+    var inventory = SentryProvider.diagnostics(dsn: appSentryDSN)
+    var engines: [any DiagnosticsEngine] = []
     if RuntimeSafety.permitsRemote(environment: configuration.environment) {
         do {
             let engine = try SentryDiagnostics(dsn: appSentryDSN, configuration: configuration)
-            remoteDiagnostics.append(engine)
-            inventory = SentryProvider.diagnostics(dsn: appSentryDSN, project: project, engine: engine)
+            engines.append(engine)
+            inventory = SentryProvider.diagnostics(dsn: appSentryDSN, engine: engine)
         } catch {
-            inventory = SentryProvider.diagnostics(dsn: appSentryDSN, project: project,
-                base: inventory, bootstrapFailure: true)
+            inventory = SentryProvider.diagnostics(
+                dsn: appSentryDSN, base: inventory, bootstrapFailure: true
+            )
             inventory.bootstrapIssue = "Sentry could not start. Local diagnostics remain available."
-            inventory = inventory.recordingStartup([
-                .init(provider: .sentry, stage: .initialization, status: .failed,
-                      code: "sentry.startup_failed", message: "The Sentry adapter could not be created.",
-                      correction: "Check this app's DSN and remove competing SDK initialization.")
-            ])
         }
     }
-    return LocalServices.make(configuration: configuration, schema: schema,
+    return LocalServices.make(
+        configuration: configuration, schema: schema,
         purchases: UnavailablePurchases(), foundationDiagnostics: inventory,
-        additionalDiagnostics: remoteDiagnostics)
+        additionalDiagnostics: engines
+    )
 }
 ```
 
-RevenueCat uses `RevenueCatPurchases(key:configuration:)` plus `RevenueCatProvider.diagnostics(publicKey:project:base:purchases:)`. iOS Firebase uses `FirebaseAnalyticsEngine(configuration:path:)` plus `FirebaseProvider.diagnostics(googleServiceInfoPath:projectName:engine:base:)`, injected through `additionalAnalytics`. Build inventory with the passive overload when no adapter can be constructed. `base:` preserves app expectations, build metadata, startup records, and custom inspections. Keep credentials in the app-owned bootstrap, never feature code or diagnostic snapshots.
+RevenueCat uses `RevenueCatPurchases(key:configuration:)` and `RevenueCatProvider.diagnostics(publicKey:project:base:purchases:)`. iOS Firebase Analytics uses `FirebaseAnalyticsEngine(configuration:path:)` and `FirebaseProvider.diagnostics(googleServiceInfoPath:projectName:engine:base:)`, injected through `additionalAnalytics`. Other platforms have an unavailable Firebase Analytics adapter. The Live/Firebase umbrella products remain available for compatibility.
 
-`UnavailablePurchases` is the device fallback when purchases are not configured. `MockPurchases` and the separate local QA composition are explicit simulations; developer mode does not make mock entitlements production authorization. SDK-free `NoopAnalyticsEngine` and `NoopDiagnosticsEngine` are available alongside empty engine arrays.
+Pass each owned engine to its diagnostic builder so inventory can distinguish supplied configuration from runtime state. Passive builders can inspect configuration without starting an SDK. `base:` retains app expectations, build metadata, startup records, and custom inspections. Inventory metadata and successful construction do not prove provider ingestion, purchase verification, or remote resource provisioning.
+
+Use resources belonging to the target app and account. Configure providers through tools authenticated to your own organization; this project does not supply provider accounts or a purchase catalog. Keep administrative credentials in an OS/tool credential store or CI secret store. Source-generation configuration accepts only public SDK configuration and safe project identifiers, never administrative tokens.
+
+Firebase backend services such as Auth, Firestore, Functions, Messaging, and App Check remain app-owned. Review ownership of the default Firebase app and collection policy before integrating Analytics. Do not remove a backend dependency to satisfy a local telemetry isolation check.
 
 ### App-owned Firebase startup and Sentry privacy
 
@@ -113,92 +136,45 @@ For app-specific Sentry privacy, pass `eventFilter:` to `SentryDiagnostics`. Its
 
 Product event meaning, trigger points and domain-safe values belong to the app. Foundation validates the app-supplied schema and owns provider mapping, consent/runtime gates, counters and local sinks. Derive repeated allowlists from one app-owned definition. An adapter acceptance or submission is not backend ingestion.
 
-## Build graph
+## Optional setup tooling
 
-| Target | SDK dependencies | Default behavior |
-|---|---|---|
-| Local simulator | Core, Pulse, PulseUI | Mock purchases, local telemetry, developer mode on |
-| Device Debug | Selected configured SDK dependencies compiled | Runtime local services, developer mode on |
-| Device Internal | Selected live adapters | Remote delivery follows app preferences, developer mode on |
-| Device Release | Selected live adapters | Remote delivery follows app preferences, developer mode off |
-| macOS local | Core, UI, Pulse | Native console/settings windows and local telemetry |
-| Standalone core tests | Foundation/Observation only | Recording engines and mock purchases |
+The setup script changes a host app's project and writes generated bootstrap/build metadata files. Work on a reviewable branch, inspect the result, and build the affected targets. It performs local wiring; it does not create remote resources or publish the app.
 
-Explicit developer enable/disable preferences override defaults. `<scheme>://developer/enable` and `/disable` reject credentials, ports, queries, fragments and encoded alternate paths. Developer mode does not alter remote delivery or purchase access.
-
-Version 0.5.0 standardized `DeveloperOptions.preferenceKey` as `mzappfoundation.developer.enabled`, scoped to each supplied defaults store. Version 0.5.1 uses only `myapp://developer/enable` and `/disable`, where `myapp` is the app's registered unique URL scheme. Generate links with `DeveloperDeepLink.url(for:scheme:)`; no bundle identifier is included. The shared `mzappfoundation` scheme and old long app-host routes are rejected. Apple documents that the target app is undefined when multiple apps register one scheme, so current setup removes that shared registration. [Apple custom-scheme routing](https://developer.apple.com/documentation/xcode/defining-a-custom-url-scheme-for-your-app)
-
-Session/timed access stores false for the next launch, while saved choices persist. These choices never enable remote delivery or bypass purchase verification. Command–D and shake open the console only while developer mode is enabled.
-
-Heavy SDKs may be resolved/downloaded by Xcode because they exist in the package manifest. Local targets must not compile/link them. Test domain modules against the standalone `Packages/Core` package from a pinned checkout to avoid even dependency resolution. Do not use app-hosted unit tests when claiming an SDK-free test process.
-
-## Setup commands
+From this repository root, prepare Python dependencies:
 
 ```sh
 python3 -m venv .venv
-.venv/bin/pip install -r scripts/requirements.txt
-.venv/bin/python scripts/setup.py inspect --app-root /path/to/app
-.venv/bin/python scripts/setup.py apply --app-root /path/to/app
-.venv/bin/python scripts/setup.py verify --app-root /path/to/app
+.venv/bin/python -m pip install -r scripts/requirements.txt
 ```
 
-XcodeGen projects require `xcodegen`. Native Xcode projects require Ruby and `bundle install --gemfile scripts/Gemfile`; set `RUBY` when system Ruby differs. Native setup preserves source/resource/framework references and adds a local target. Review custom target dependencies, inherited xcconfigs, script phases, extensions and vendor calls: verification intentionally rejects unresolved direct SDK imports. Run setup from the project root; nested project specs should use project-root-relative paths.
+Copy [config.example.json](config.example.json) into the host app as `.mzappfoundation/config.json`. Replace the project filename, target, bundle identifier, URL scheme, platform, deployment target, and event schema. The example has no providers or product catalog and disables remote delivery preferences. Set those preferences deliberately for your app. `bug_reporting: true` is supported only for iOS and requires microphone purpose text.
 
-Provider fields: `revenuecat_public_key`, `sentry_dsn`, `google_service_info` (app-relative plist path), `sentry_org`, `sentry_project`. Modern integrations also accept `revenuecat_project_name`, `revenuecat_project_id`, `revenuecat_app_id`, `firebase_project_name`, and `sentry_project_id`. Metadata alone does not cause SDK linkage or prove remote provisioning. Never store administrative tokens in this file. `products` contains only confirmed product definitions; provisioning is handled by the skill and records exact remote readbacks. No product catalog means no RevenueCat offering creation.
+Run the supported modes, replacing the example app directory:
 
-Setup defaults to `package_version: "0.6.2"`; use `package_path` when developing against a local checkout. Explicitly pinned older integrations retain compatible generation and do not receive newer APIs until upgraded. Setup for 0.5.0+ supports iOS, visionOS, and macOS, generates independent provider composition, and copies the build metadata generator into the app. For 0.5.1+ or a current local checkout, it registers only the app's unique scheme and removes earlier shared-scheme entries while preserving unrelated URL types. Review and validate the target app; setup does not publish a package, distribute the app, or migrate another repository.
-
-## Build and diagnostics evidence
-
-`VERSION` and library `Package.resolved` generate `FoundationVersion.swift`. The app build phase writes `MZFoundationBuildMetadata.plist` with optional app/foundation revisions, modified-tree flags, build channel/date, and app-resolved versions. Missing evidence stays unstamped; the library lock snapshot is explicitly labeled. Runtime SDK measurements are shown separately from generated package-version evidence.
-
-`FoundationDiagnostics` accepts ordered environment/platform provider expectations, expected identities, startup records, typed app-owned inspections, and manual verification actions. The last matching expectation wins. Provider screens compare known expected/supplied/running identifiers and report unknown runtime identity without inventing a match. Firebase plist inspection remains available when its SDK is absent. The overview's issue filter selects warning/error findings.
-
-Telemetry exposes payload-free counters and a bounded process-local timeline. Counts distinguish calls from per-adapter outcomes, so blocking reasons and multiple adapter results can overlap. Manual RevenueCat refresh preserves normal verification rules; tagged Firebase/Sentry events require current runtime/preferences and report submission with correlation references, requiring dashboard confirmation.
-
-`services.diagnosticExport()` provides an immutable, versioned, redacted JSON/text snapshot. The developer UI can save/copy/share it. On iOS, opt into a report ZIP attachment with `DeveloperReporting(services: services)` or a diagnostics closure; the form then allows exclusion of the captured `diagnostics.json`. App-owned custom fields require explicit exportable IDs and safe technical values. Neither snapshots nor QA/report attachments are automatically uploaded through analytics/Sentry.
-
-The local QA page creates isolated missing-configuration, offline, pending-purchase, and verification-failure mock services. It never replaces the host composition and requires a local debug/simulator/test/preview runtime. See [developer settings](developer-settings.md) for all screens, contracts, and [current validation evidence](developer-settings-validation.md).
-
-## Network diagnostics
-
-Create `InstrumentedSession(options: services.developerOptions)` and use `data(for:)`. Capture follows the developer flag even for in-flight callbacks. It does not intercept vendor/background/custom sessions globally. Bodies, query values, credentials, raw error descriptions and metrics are omitted. Sensitive headers are filtered case-insensitively; extend `RedactionPolicy` for app-specific fields. URL paths must themselves be safe to record.
-
-## SDK compatibility
-
-Pulse is pinned to 5.2.1: 5.2.3 failed the visionOS sample build because `RichTextViewSearchToobar-ios.swift` calls `glassEffect`, which is unavailable on visionOS. Do not upgrade without both platform builds. RevenueCat 5.94.0, Sentry 9.30.1 and Firebase 13.0.0 are pinned. Firebase 13.0.0 is the canonical SwiftPM release; 13.0.1 has identical SwiftPM code. Unused Firestore package traits are disabled. Firebase's `FirebaseAnalyticsCore` package product exports the `FirebaseAnalytics` Swift module.
-
-## Structured diagnostic logging (0.2.0)
-
-Use the injected `services.logger` for technical logging:
-
-```swift
-logger.error("Model loading failed", error: error, category: "model",
-             metadata: ["model_id": .string(modelID)])
+```sh
+.venv/bin/python scripts/setup.py inspect --app-root ../MyApp
+.venv/bin/python scripts/setup.py apply --app-root ../MyApp
+.venv/bin/python scripts/setup.py verify --app-root ../MyApp
 ```
 
-`LogEntry` and `DiagnosticIssue` retain optional `ErrorSnapshot` and `LogSource` values.
-Wrappers forward caller file/function/line. Error snapshots are synchronous, immutable,
-and SDK-independent: type, domain, signed code, at most eight underlying causes,
-and up to 64 stack frames. Supplied `ErrorStackProviding` stacks retain their provenance;
-otherwise frames are explicitly labeled as reporting-time evidence. Arbitrary
-localized descriptions and userInfo are excluded; app-owned `LoggableError` messages
-must be audited, technical text. Never interpolate user-authored text into these messages.
+`--config` can select a different JSON file. The default config is under the app root, not this repository. Project and resource paths are app-root-relative; put a nested project specification's paths in that coordinate system. XcodeGen integration requires `xcodegen` on PATH. Native projects require Ruby and `bundle install --gemfile scripts/Gemfile`; run setup through the same Bundler environment (`BUNDLE_GEMFILE=scripts/Gemfile bundle exec .venv/bin/python ...`) if gems are not otherwise visible. The `RUBY` environment variable selects the Ruby executable.
 
-AppServices routes error logs once through diagnostics; the raw local sink handles
-Pulse persistence. Warnings remain local. Pulse shows error evidence in metadata and
-caller location in its native source fields; Sentry receives exception and diagnostic
-context fields only when remote diagnostics are enabled. App/build context stays in
-metadata/session information, and analytics names are never rewritten for display.
+`package_version` selects a release; the script default is `0.6.2`. To integrate this checkout instead, replace it with `package_path` pointing to the checkout root. An absolute local path avoids build working-directory ambiguity; keep machine-specific configuration out of shared examples. Setup retains compatibility generation for older explicit pins, so upgrading the package also requires reviewing generated code.
 
-Pulse 5.2.1 strips whitespace from metadata passed to `storeMessage`. The adapter
-uses normal store insertion, then corrects the identified row on Pulse's public
-Core Data write context, before returning. Frames use separate fields because
-Pulse's metadata format is newline-delimited. This compatibility workaround stays
-inside the Pulse adapter and is covered by a persistence test. Error/warning logs
-with whitespace incur an immediate local save; ordinary token/numeric metadata
-continues through Pulse's normal batching. The console defaults to Logs.
+Supported provider fields are `revenuecat_public_key`, `sentry_dsn`, `google_service_info` (an app-relative plist path), `sentry_org`, `sentry_project`, `revenuecat_project_name`, `revenuecat_project_id`, `revenuecat_app_id`, `firebase_project_name`, and `sentry_project_id`. Provider products follow supplied SDK configuration. The `products` array is an inventory for review, not an instruction to invent or provision products. An empty catalog needs no offering creation.
 
-## Local bug reporting (0.3.0)
+Verification rejects unresolved direct vendor imports and checks generated wiring. Custom dependencies, xcconfigs, extensions, existing SDK initialization, and app entrypoint usage still need review. See [migration](migration.md) and the [setup skill](../skills/mz-app-foundation-setup/SKILL.md).
 
-The optional iOS `MZAppFoundationReporting` module supplies rolling silent screen capture, screenshots, title-or-voice reports and ZIP sharing. `MZAppFoundationLocal` adapts the existing Pulse store and owns console integration. Add `bug_reporting: true` to setup configuration and follow [bug reporting integration](bug-reporting.md). The previous console-only interface remains source-compatible. No reporting types or third-party SDKs enter the standalone core package.
+## Diagnostics and evidence
+
+`VERSION` and the library lockfile generate `FoundationVersion.swift`. The app build phase writes `MZFoundationBuildMetadata.plist` with available source revisions, modified-tree flags, channel/date, and resolved package versions. Missing evidence remains unknown. Library lockfile metadata is separate from a runtime SDK version or backend verification.
+
+`FoundationDiagnostics` supports provider expectations, expected identities, startup records, app-owned inspections, and manual verification actions. The last matching expectation wins. Telemetry counters and the bounded process-local timeline expose routing outcomes without retaining event payloads. Firebase/Sentry verification actions can supply correlation references for dashboard checks; submission is not ingestion confirmation.
+
+`services.diagnosticExport()` produces a versioned JSON/text snapshot. UI and optional iOS report attachments let the user export it. Review app-owned inspection fields and exportable IDs for safe technical content. Neither a diagnostic snapshot nor a QA page proves production health. The QA page uses separate mock services and does not replace host services.
+
+For network diagnostics, `InstrumentedSession(options: services.developerOptions).data(for:)` instruments that session only. Bodies, query values, credentials, raw error descriptions, and metrics are omitted. Paths must be safe to record; extend `RedactionPolicy` for app-specific sensitive keys.
+
+For structured errors, pass the original error to `services.logger.error("Model loading failed", error: error, category: "model")`. Core `ErrorSnapshot` captures bounded causes and stack provenance without arbitrary localized descriptions or userInfo. App-authored messages still require privacy review. Error logs route through diagnostics once; warning logs stay local. Vendor formatting workarounds remain inside adapters.
+
+See [verification](verification.md) for repeatable commands and [developer settings](developer-settings.md) for diagnostics UI APIs.

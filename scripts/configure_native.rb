@@ -44,7 +44,7 @@ vendor_products = %w[RevenueCat RevenueCatUI Sentry Sentry-Dynamic FirebaseAnaly
   end
 end
 package = project.root_object.package_references.find do |ref|
-  (ref.respond_to?(:repositoryURL) && ref.repositoryURL == 'git@github.com:matteozajac/MZAppFoundation.git') ||
+  (ref.respond_to?(:repositoryURL) && ['git@github.com:matteozajac/MZAppFoundation.git', 'https://github.com/matteozajac/MZAppFoundation.git'].include?(ref.repositoryURL)) ||
     (ref.respond_to?(:relative_path) && ref.relative_path == config['package_path'])
 end
 unless package
@@ -53,12 +53,13 @@ unless package
     package.relative_path = config['package_path']
   else
     package = project.new(Xcodeproj::Project::Object::XCRemoteSwiftPackageReference)
-    package.repositoryURL = 'git@github.com:matteozajac/MZAppFoundation.git'
+    package.repositoryURL = 'https://github.com/matteozajac/MZAppFoundation.git'
     package.requirement = { 'kind' => 'exactVersion', 'version' => config.fetch('package_version', '0.6.2') }
   end
   project.root_object.package_references << package
 end
 if package.isa == 'XCRemoteSwiftPackageReference'
+  package.repositoryURL = 'https://github.com/matteozajac/MZAppFoundation.git'
   package.requirement = { 'kind' => 'exactVersion', 'version' => config.fetch('package_version', '0.6.2') }
 end
 group = project.main_group.find_subpath('.mzappfoundation/Generated', true)

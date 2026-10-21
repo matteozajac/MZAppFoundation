@@ -1,0 +1,28 @@
+name: Feature request
+description: Propose an improvement with a concrete use case.
+title: "[Feature]: "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Describe the app or tooling problem using example identifiers and synthetic data.
+        For vulnerabilities, follow [SECURITY.md](https://github.com/matteozajac/MZAppFoundation/blob/main/SECURITY.md).
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem or use case
+      description: What are you trying to accomplish, and what currently gets in the way?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed behavior
+      description: Explain the desired outcome and affected platforms or package products.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives and validation
+      description: Mention workarounds you considered and how the improvement could be checked.

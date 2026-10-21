@@ -1,0 +1,51 @@
+name: Bug report
+description: Report a reproducible problem with the package or its local tools.
+title: "[Bug]: "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        For a security vulnerability, follow [SECURITY.md](https://github.com/matteozajac/MZAppFoundation/blob/main/SECURITY.md).
+        Use synthetic examples. Do not attach real report ZIPs, private logs, credentials, customer data, or recordings.
+  - type: input
+    id: version
+    attributes:
+      label: Version or commit
+      description: Include the affected MZAppFoundation version or commit and package product or tool.
+      placeholder: "Version, commit, and affected product or script"
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Include OS, Xcode and Swift versions, configuration, and device or simulator where relevant.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to reproduce
+      description: Give the smallest reproduction using example identifiers and synthetic data.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+      description: Include relevant sanitized error text and what you observed.
+    validations:
+      required: true
+  - type: checkboxes
+    id: privacy
+    attributes:
+      label: Before submitting
+      options:
+        - label: I removed secrets and private data, and this is not a public vulnerability disclosure.
+          required: true

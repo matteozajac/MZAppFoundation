@@ -1,8 +1,8 @@
 # Bug reporting validation — 2026-09-29
 
-## JoinOurDay parity and console routing — 2026-10-03
+## Host-app parity and console routing — 2026-10-03
 
-The current checkout was compared with JoinOurDay's `Packages/BugReporter`. Rolling recording, cache budgets, screenshots, voice notes, report schema, ZIP sharing and cleanup are already copied into Foundation. Foundation also supports a redacted diagnostics attachment. The reporting-aware Foundation settings composition now routes its Pulse console page through the same reporter, so the Ladybug action is available there as well as from root console/shake access.
+The current checkout was compared with an earlier app-local `Packages/BugReporter` implementation. Rolling recording, cache budgets, screenshots, voice notes, report schema, ZIP sharing and cleanup are already copied into Foundation. Foundation also supports a redacted diagnostics attachment. The reporting-aware Foundation settings composition now routes its Pulse console page through the same reporter, so the Ladybug action is available there as well as from root console/shake access.
 
 Fresh verification on Xcode 27.0 / iOS 27.0 Simulator:
 
@@ -13,7 +13,7 @@ Fresh verification on Xcode 27.0 / iOS 27.0 Simulator:
 
 The final iOS 27 UI run emitted two `Invalid frame dimension (negative or non-finite)` warnings while focusing the report title. Xcode supplied no source location. Title entry, sharing, cancellation and reopening still passed; the warning's source remains unidentified.
 
-Evidence remains ignored in `output/reporting-parity-2026-10-03/`: `reporting.xcresult`, `ui-final.xcresult`, test logs, `inspection/`, extracted ZIPs and screenshots. This validates the local package checkout; it does not publish a new package release or migrate JoinOurDay. Live physical-device recording/consent/performance and microphone behavior were not exercised. The existing limitations below still apply.
+Evidence remains ignored in `output/reporting-parity-2026-10-03/`: `reporting.xcresult`, `ui-final.xcresult`, test logs, `inspection/`, extracted ZIPs and screenshots. This validates the local package checkout; it does not publish a new package release or migrate a host app. Live physical-device recording/consent/performance and microphone behavior were not exercised. The existing limitations below still apply.
 
 MZAppFoundation 0.3.0 adds iOS reporting behind an explicit reporting-enabled developer-tools overload. Existing console-only consumers and SDK-free core interfaces remain compatible. The package keeps iOS/visionOS 26 deployment requirements and Pulse 5.2.1.
 

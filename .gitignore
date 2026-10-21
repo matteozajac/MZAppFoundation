@@ -9,7 +9,37 @@ __pycache__/
 .venv/
 .env
 .env.*
+!.env.example
 *.p8
 *.p12
+*.pfx
+*.pem
+*.key
+*.cer
 *.mobileprovision
 .mzappfoundation/state.json
+# Host-owned provider configuration and credentials
+GoogleService-Info.plist
+google-services.json
+*service-account*.json
+*serviceAccount*.json
+.firebaserc
+.sentryclirc
+.netrc
+.npmrc
+.mzappfoundation/config.json
+# Private recordings, exports, reports, and local inbox state
+*.xcresult/
+*.dSYM/
+*.ipa
+*.pkg
+*.pulse
+*.pulse.zip
+*.bedtimestory
+*.shortcut
+*.m4a
+*.mp4
+*.mov
+.mz-inbox/
+secrets/
+credentials/

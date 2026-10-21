@@ -34,7 +34,7 @@ When composing Foundation settings, pass the same instance to `FoundationDevelop
 - `Packages/Core`: unchanged SDK-free domain interfaces; no media or UI dependencies.
 - visionOS/macOS: retain their existing console interfaces. Version 0.3.0 does not claim screen/voice reporting parity on those platforms. iOS reporting sources are conditionally compiled and the local composition depends on them only on iOS.
 
-No app migration is implicit in publishing the package. In particular, JoinOurDay's iOS 18.2/Pulse 5.2.3 local integration remains separate. Do not raise deployment targets or change SDK pins as an incidental setup step.
+No app migration is implicit in publishing the package. Existing app-local reporters may use lower deployment targets or different SDK pins. Do not raise deployment targets or change SDK pins as an incidental setup step.
 
 ## Capture and privacy
 

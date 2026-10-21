@@ -340,7 +340,7 @@ def mutate_xcodegen(root, config):
     local_name = config['target'] + 'Local'
     spec.setdefault('configs', {'Debug': 'debug', 'Release': 'release'}).setdefault('Internal', 'release')
     package = {'path': config['package_path']} if config.get('package_path') else {
-        'url': 'git@github.com:matteozajac/MZAppFoundation.git', 'exactVersion': config.get('package_version', '0.6.2')}
+        'url': 'https://github.com/matteozajac/MZAppFoundation.git', 'exactVersion': config.get('package_version', '0.6.2')}
     spec.setdefault('packages', {})['MZAppFoundation'] = package
     base_dependencies = [d for d in target.get('dependencies', []) if d.get('package') != 'MZAppFoundation' and d.get('product', d.get('package')) not in VENDOR_PRODUCTS]
     source = '.mzappfoundation/Generated'
