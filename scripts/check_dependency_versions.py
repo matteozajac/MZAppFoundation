@@ -9,9 +9,9 @@ import subprocess
 REPO = Path(__file__).resolve().parents[1]
 PROVIDERS = {
     'kean/Pulse': ('5.2.1', {'5.2.3': 'PulseUI glassEffect is unavailable on visionOS; retain 5.2.1 until the cross-platform build passes.'}),
-    'getsentry/sentry-cocoa': ('9.30.1', {}),
-    'RevenueCat/purchases-ios': ('5.94.0', {}),
-    'firebase/firebase-ios-sdk': ('13.0.0', {'13.0.1': 'Firebase 13.0.0 and 13.0.1 contain identical SwiftPM code; 13.0.0 is the canonical SwiftPM release.'}),
+    'getsentry/sentry-cocoa': ('9.30.2', {}),
+    'RevenueCat/purchases-ios': ('5.96.0', {}),
+    'firebase/firebase-ios-sdk': ('13.0.1', {}),
 }
 
 

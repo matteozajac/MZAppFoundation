@@ -1,5 +1,4 @@
 {
-  "originHash" : "4fcfa7a88127be1543297565909f9d68d72bfa846907632abd43eaf3b97b5c23",
   "pins" : [
     {
       "identity" : "app-check",
@@ -16,7 +15,7 @@
       "location" : "https://github.com/firebase/firebase-ios-sdk.git",
       "state" : {
         "revision" : "1c35b9453868cea1ecdf9f112b5b23b8b6343854",
-        "version" : "13.0.0"
+        "version" : "13.0.1"
       }
     },
     {
@@ -114,8 +113,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/RevenueCat/purchases-ios.git",
       "state" : {
-        "revision" : "1152c719f7b35f86d16a2d0053aba9d26972a962",
-        "version" : "5.94.0"
+        "revision" : "62df33e85b1aefaecbf7f19e89e71e2322ec15ac",
+        "version" : "5.96.0"
       }
     },
     {
@@ -123,8 +122,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/getsentry/sentry-cocoa.git",
       "state" : {
-        "revision" : "4f135c52afeeb1d6937eb93824c7ec1cddcaa372",
-        "version" : "9.30.1"
+        "revision" : "4bb2282661ee6ca2212aa01d19a1214394cd3c45",
+        "version" : "9.30.2"
       }
     }
   ],
