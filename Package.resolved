@@ -1,5 +1,5 @@
 {
-  "originHash" : "4fcfa7a88127be1543297565909f9d68d72bfa846907632abd43eaf3b97b5c23",
+  "originHash" : "f8810b24935455ca93313807083fcf85fd94387bc6091844ee66bfecf70425fd",
   "pins" : [
     {
       "identity" : "app-check",
@@ -16,7 +16,7 @@
       "location" : "https://github.com/firebase/firebase-ios-sdk.git",
       "state" : {
         "revision" : "1c35b9453868cea1ecdf9f112b5b23b8b6343854",
-        "version" : "13.0.0"
+        "version" : "13.0.1"
       }
     },
     {
