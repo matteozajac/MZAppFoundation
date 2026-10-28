@@ -1,4 +1,5 @@
 {
+  "originHash" : "bf2bb523b8cdd2e1d4515ddb806b7a810bce60277f4d5e146eab011b47ba1a72",
   "pins" : [
     {
       "identity" : "app-check",
@@ -14,8 +15,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/firebase/firebase-ios-sdk.git",
       "state" : {
-        "revision" : "1c35b9453868cea1ecdf9f112b5b23b8b6343854",
-        "version" : "13.0.1"
+        "revision" : "dc6dfd442b1f3ec215ed62b8beb2623ffab010d6",
+        "version" : "13.1.1"
       }
     },
     {
