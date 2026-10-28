@@ -18,7 +18,7 @@ let package = Package(
     dependencies: [
         .package(url: "https://github.com/kean/Pulse.git", exact: "5.2.1"),
         .package(url: "https://github.com/getsentry/sentry-cocoa.git", exact: "9.30.2"),
-        .package(url: "https://github.com/RevenueCat/purchases-ios.git", exact: "5.96.0"),
+        .package(url: "https://github.com/RevenueCat/purchases-ios.git", exact: "5.98.0"),
         .package(url: "https://github.com/firebase/firebase-ios-sdk.git", exact: "13.0.1", traits: [])
     ],
     targets: [
